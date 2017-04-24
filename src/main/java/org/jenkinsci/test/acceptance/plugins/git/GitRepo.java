@@ -1,13 +1,32 @@
 package org.jenkinsci.test.acceptance.plugins.git;
 
-import com.jcraft.jsch.*;
+import java.io.BufferedReader;
+import java.io.Closeable;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Properties;
+
 import org.apache.commons.io.FileUtils;
 import org.jenkinsci.test.acceptance.docker.fixtures.GitContainer;
 import org.zeroturnaround.zip.ZipUtil;
 
-import java.io.*;
-import java.nio.file.Files;
-import java.util.*;
+import com.jcraft.jsch.ChannelExec;
+import com.jcraft.jsch.ChannelSftp;
+import com.jcraft.jsch.JSch;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.Session;
+import com.jcraft.jsch.SftpException;
 
 import static java.lang.ProcessBuilder.Redirect.INHERIT;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
@@ -49,7 +68,9 @@ public class GitRepo implements Closeable {
         setIdentity(dir);
     }
 
-    /** Configures and identity for the repo, just in case global config is not set. */
+    /**
+     * Configures an identity for the repo.
+     */
     private void setIdentity(File dir) throws IOException, InterruptedException {
         gitDir(dir, "config", "user.name", "Jenkins-ATH");
         gitDir(dir, "config", "user.email", "jenkins-ath@example.org");
@@ -96,9 +117,9 @@ public class GitRepo implements Closeable {
     }
 
     /**
-     * Creates a new commit.
+     * Creates a new commit, with a file named "foo".
      */
-    public void commit(String msg) throws IOException, InterruptedException {
+    public void add_foo_and_commit(String msg) throws IOException, InterruptedException {
         try (FileWriter o = new FileWriter(new File(dir, "foo"), true)) {
             o.write("more");
         }
@@ -106,15 +127,29 @@ public class GitRepo implements Closeable {
         git("commit", "-m", msg);
     }
 
-    public void touch(String name) throws IOException {
-        FileUtils.writeStringToFile(path(name), "");
+    /**
+     * Creates a new git repo, with a file named "filename", and commits.
+     */
+    public void add_file_and_commit(String msg, String filename) throws IOException, InterruptedException {
+        try (FileWriter o = new FileWriter(new File(dir, filename), true)) {
+            o.write("text");
+        }
+        git("add", filename);
+        git("commit", "-m", msg);
     }
 
     /**
-     * Refers to a path relative to the workspace directory.
+     *
+     * appends a String to a text file
      */
-    public File path(String name) {
-        return new File(dir, name);
+    public void append_string_to_file(String filename, String append) throws IOException {
+
+        try {
+            Files.write(Paths.get(filename), append.getBytes(), StandardOpenOption.APPEND);
+        }
+        catch (IOException x) {
+            System.err.format("Jenkins Acceptance Test Harness: IOException: %s%n", x);
+        }
     }
 
     @Override

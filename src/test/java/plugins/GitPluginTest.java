@@ -23,11 +23,22 @@
  */
 package plugins;
 
-import com.jcraft.jsch.JSchException;
-import com.jcraft.jsch.SftpException;
+import javax.inject.Inject;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.nio.file.Paths;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
 import org.jenkinsci.test.acceptance.docker.DockerContainerHolder;
 import org.jenkinsci.test.acceptance.docker.fixtures.GitContainer;
-import org.jenkinsci.test.acceptance.junit.*;
+import org.jenkinsci.test.acceptance.junit.AbstractJUnitTest;
+import org.jenkinsci.test.acceptance.junit.DockerTest;
+import org.jenkinsci.test.acceptance.junit.SmokeTest;
+import org.jenkinsci.test.acceptance.junit.WithCredentials;
+import org.jenkinsci.test.acceptance.junit.WithDocker;
+import org.jenkinsci.test.acceptance.junit.WithPlugins;
 import org.jenkinsci.test.acceptance.plugins.git.GitRepo;
 import org.jenkinsci.test.acceptance.plugins.git.GitScm;
 import org.jenkinsci.test.acceptance.po.Build;
@@ -37,13 +48,11 @@ import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.openqa.selenium.By;
 
-import javax.inject.Inject;
-import java.io.IOException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import com.jcraft.jsch.JSchException;
+import com.jcraft.jsch.SftpException;
 
-import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.core.Is.is;
+import static org.hamcrest.MatcherAssert.*;
+import static org.hamcrest.core.Is.*;
 
 @WithDocker
 @Category(DockerTest.class)
@@ -135,6 +144,7 @@ public class GitPluginTest extends AbstractJUnitTest {
         job.startBuild().shouldSucceed();
     }
 
+
     @Test
     public void checkout_to_local_dir() throws IOException, InterruptedException, SftpException, JSchException {
         buildGitRepo()
@@ -149,6 +159,7 @@ public class GitPluginTest extends AbstractJUnitTest {
 
         job.startBuild().shouldSucceed();
     }
+
 
     @Test
     public void poll_for_changes() throws IOException, InterruptedException, SftpException, JSchException {
@@ -168,6 +179,7 @@ public class GitPluginTest extends AbstractJUnitTest {
         job.getLastBuild().shouldSucceed().shouldExist();
     }
 
+
     @Test
     public void check_revision() throws IOException, InterruptedException, SftpException, JSchException {
         buildGitRepo()
@@ -186,6 +198,7 @@ public class GitPluginTest extends AbstractJUnitTest {
         build.control(By.xpath("//*[contains(text(),'" + revision + "')]")).check();
     }
 
+
     @Test
     public void update_submodules_recursively() throws IOException, InterruptedException, JSchException, SftpException {
         String name = "submodule";
@@ -203,6 +216,59 @@ public class GitPluginTest extends AbstractJUnitTest {
         job.startBuild().shouldSucceed();
     }
 
+
+    @Test
+    public void check_scm_changes() throws IOException, InterruptedException, SftpException, JSchException {
+        String filename = "test-file";
+        String content = "test content";
+        GitRepo repo = new GitRepo();
+
+        repo.add_file_and_commit("Test commit", filename);
+        repo.append_string_to_file(filename, content);
+        repo.add_file_and_commit("Test: changed content", filename);
+        repo.transferToDockerContainer(host, port);
+
+
+        job.useScm(GitScm.class)
+                .url(repoUrl)
+                .credentials(USERNAME)
+                .localDir("local_dir");
+        job.addShellStep("cd local_dir && test -f " + filename);
+        job.addShellStep("cd local_dir && echo '" + content + "' >> " + filename);
+        job.addShellStep("cd local_dir && nr=\"$(grep -c \""+ content + "\" " + filename + ")\" && if [ \"$nr\" = \"1\" ]; then exit 0; else exit 1; fi;");
+        job.save();
+
+
+        job.startBuild().shouldSucceed();
+    }
+
+    @Test
+    public void failed_check_scm_changes() throws IOException, InterruptedException, SftpException, JSchException {
+        String filename = "test-file";
+        String content = "test content";
+        String content2 = "not contained";
+        GitRepo repo = new GitRepo();
+
+        repo.add_file_and_commit("Test commit", filename);
+        repo.append_string_to_file(filename, content);
+        repo.add_file_and_commit("Test: changed content", filename);
+        repo.transferToDockerContainer(host, port);
+
+
+        job.useScm(GitScm.class)
+                .url(repoUrl)
+                .credentials(USERNAME)
+                .localDir("local_dir");
+        job.addShellStep("cd local_dir && test -f " + filename);
+        job.addShellStep("cd local_dir && echo '" + content + "' >> " + filename);
+        job.addShellStep("cd local_dir && nr=\"$(grep -c \""+ content2 + "\" " + filename + ")\" && if [ \"$nr\" = \"1\" ]; then exit 0; else exit 1; fi;");
+        job.save();
+
+
+        job.startBuild().shouldFail();
+    }
+
+
     private String getRevisionFromConsole(String console) {
         Pattern p = Pattern.compile("(?<=\\bRevision\\s)(\\w+)");
         Matcher m = p.matcher(console);
@@ -210,9 +276,10 @@ public class GitPluginTest extends AbstractJUnitTest {
         return m.group(0);
     }
 
+
     private GitRepo buildGitRepo() throws IOException, InterruptedException {
         GitRepo repo = new GitRepo();
-        repo.commit("Initial commit");
+        repo.add_foo_and_commit("Initial commit");
         return repo;
     }
 }
