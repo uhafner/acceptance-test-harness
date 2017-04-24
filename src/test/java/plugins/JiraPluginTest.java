@@ -1,9 +1,5 @@
 package plugins;
 
-import com.google.inject.Inject;
-
-import hudson.plugins.jira.soap.RemoteComment;
-
 import org.jenkinsci.test.acceptance.docker.DockerContainerHolder;
 import org.jenkinsci.test.acceptance.docker.fixtures.JiraContainer;
 import org.jenkinsci.test.acceptance.junit.AbstractJUnitTest;
@@ -21,7 +17,10 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 
-import static org.junit.Assert.fail;
+import com.google.inject.Inject;
+
+import hudson.plugins.jira.soap.RemoteComment;
+import static org.junit.Assert.*;
 
 @WithPlugins({"jira", "git"})
 @Category(DockerTest.class)
@@ -39,7 +38,7 @@ public class JiraPluginTest extends AbstractJUnitTest {
 
     @After
     public void tearDown() throws Exception {
-        if (git!=null)
+        if (git != null)
             git.close();
     }
 
@@ -65,11 +64,11 @@ public class JiraPluginTest extends AbstractJUnitTest {
         }
         job.save();
 
-        git.commit("initial commit");
+        git.add_foo_and_commit("initial commit");
         job.startBuild().shouldSucceed();
 
-        git.commit("[ABC-1] fixed");
-        git.commit("[ABC-2] fixed");
+        git.add_foo_and_commit("[ABC-1] fixed");
+        git.add_foo_and_commit("[ABC-2] fixed");
         Build b = job.startBuild().shouldSucceed();
 
         b.open();
