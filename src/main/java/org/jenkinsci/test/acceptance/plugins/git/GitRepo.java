@@ -108,6 +108,10 @@ public class GitRepo implements Closeable {
         git("commit", "-m", msg);
     }
 
+    public void touch(String name) throws IOException {
+        FileUtils.writeStringToFile(path(name), "");
+    }
+
     /**
      * Creates a new commit, with a file named "foo".
      */
