@@ -42,8 +42,8 @@ import java.io.IOException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.hamcrest.MatcherAssert.*;
-import static org.hamcrest.core.Is.*;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.core.Is.is;
 
 
 @WithDocker

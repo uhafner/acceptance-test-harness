@@ -39,7 +39,7 @@ public class JiraPluginTest extends AbstractJUnitTest {
 
     @After
     public void tearDown() throws Exception {
-        if (git != null)
+        if (git!=null)
             git.close();
     }
 
