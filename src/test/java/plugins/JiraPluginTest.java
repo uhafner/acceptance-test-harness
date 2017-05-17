@@ -65,11 +65,11 @@ public class JiraPluginTest extends AbstractJUnitTest {
         }
         job.save();
 
-        git.commit("initial commit");
+        git.addFooAndCommit("initial commit");
         job.startBuild().shouldSucceed();
 
-        git.commit("[ABC-1] fixed");
-        git.commit("[ABC-2] fixed");
+        git.addFooAndCommit("[ABC-1] fixed");
+        git.addFooAndCommit("[ABC-2] fixed");
         Build b = job.startBuild().shouldSucceed();
 
         b.open();

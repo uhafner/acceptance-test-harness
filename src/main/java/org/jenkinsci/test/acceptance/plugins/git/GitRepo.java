@@ -7,6 +7,8 @@ import org.zeroturnaround.zip.ZipUtil;
 
 import java.io.*;
 import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.*;
 
 import static java.lang.ProcessBuilder.Redirect.INHERIT;
@@ -108,6 +110,45 @@ public class GitRepo implements Closeable {
 
     public void touch(String name) throws IOException {
         FileUtils.writeStringToFile(path(name), "");
+    }
+
+    /**
+     * Creates a new commit, with a file named "foo".
+     */
+    public void addFooAndCommit(String msg) throws IOException, InterruptedException {
+        try (FileWriter o = new FileWriter(new File(dir, "foo"), true)) {
+            o.write("more");
+        }
+        git("add", "foo");
+        git("commit", "-m", msg);
+    }
+
+    /**
+     * Creates a new git repo, with a file named "filename", and commits.
+     */
+    public void addFileAndCommit(String msg, String filename) throws IOException, InterruptedException {
+        try (FileWriter o = new FileWriter(new File(dir, filename), true)) {
+            o.write("text");
+        }
+        git("add", filename);
+        git("commit", "-m", msg);
+    }
+
+    /**
+     *
+     * appends a String to a text file
+     */
+    public void appendStringToFile(String filename, String append) throws IOException, RuntimeException {
+
+        try {
+            Files.write(Paths.get(filename), append.getBytes(), StandardOpenOption.APPEND);
+        }
+        catch (IOException x) {
+            System.err.format("Jenkins Acceptance Test Harness: IOException: %s%n", x);
+        }
+        catch (RuntimeException x) {
+            System.err.format("Jenkins Acceptance Test Harness: RuntimeException: %s%n", x);
+        }
     }
 
     /**

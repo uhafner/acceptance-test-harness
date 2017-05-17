@@ -45,6 +45,7 @@ import java.util.regex.Pattern;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.Is.is;
 
+
 @WithDocker
 @Category(DockerTest.class)
 @WithPlugins("git")
@@ -203,6 +204,53 @@ public class GitPluginTest extends AbstractJUnitTest {
         job.startBuild().shouldSucceed();
     }
 
+    @Test
+    public void check_scm_changes() throws IOException, InterruptedException, SftpException, JSchException {
+        String filename = "foo";
+        String content = "test content";
+        GitRepo repo = new GitRepo();
+
+        repo.addFileAndCommit("Test commit", filename);
+        repo.appendStringToFile(filename, content);
+        repo.addFileAndCommit("Test: changed content", filename);
+        repo.transferToDockerContainer(host, port);
+
+        job.useScm(GitScm.class)
+                .url(repoUrl)
+                .credentials(USERNAME)
+                .localDir("local_dir");
+        job.addShellStep("cd local_dir && test -f " + filename);
+        job.addShellStep("cd local_dir && echo '" + content + "' >> " + filename);
+        job.addShellStep("cd local_dir && nr=\"$(grep -c \""+ content + "\" " + filename + ")\" && if [ \"$nr\" = \"1\" ]; then exit 0; else exit 1; fi;");
+        job.save();
+
+        job.startBuild().shouldSucceed();
+    }
+
+    @Test
+    public void failed_check_scm_changes() throws IOException, InterruptedException, SftpException, JSchException {
+        String filename = "foo";
+        String content = "test content";
+        String content2 = "not contained";
+        GitRepo repo = new GitRepo();
+
+        repo.addFileAndCommit("Test commit", filename);
+        repo.appendStringToFile(filename, content);
+        repo.addFileAndCommit("Test: changed content", filename);
+        repo.transferToDockerContainer(host, port);
+
+        job.useScm(GitScm.class)
+                .url(repoUrl)
+                .credentials(USERNAME)
+                .localDir("local_dir");
+        job.addShellStep("cd local_dir && test -f " + filename);
+        job.addShellStep("cd local_dir && echo '" + content + "' >> " + filename);
+        job.addShellStep("cd local_dir && nr=\"$(grep -c \""+ content2 + "\" " + filename + ")\" && if [ \"$nr\" = \"1\" ]; then exit 0; else exit 1; fi;");
+        job.save();
+
+        job.startBuild().shouldFail();
+    }
+
     private String getRevisionFromConsole(String console) {
         Pattern p = Pattern.compile("(?<=\\bRevision\\s)(\\w+)");
         Matcher m = p.matcher(console);
@@ -212,7 +260,7 @@ public class GitPluginTest extends AbstractJUnitTest {
 
     private GitRepo buildGitRepo() throws IOException, InterruptedException {
         GitRepo repo = new GitRepo();
-        repo.commit("Initial commit");
+        repo.addFooAndCommit("Initial commit");
         return repo;
     }
 }
