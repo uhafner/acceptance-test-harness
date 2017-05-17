@@ -103,24 +103,24 @@ public class WorkflowPluginTest extends AbstractJUnitTest {
         });
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
         job.script.set(
-        "node('remote') {\n" +
-             "  git 'https://github.com/jglick/simple-maven-project-with-tests.git'\n" +
-             "  def v = version()\n" +
-             "  if (v) {\n" +
-             "    echo \"Building version ${v}\"\n" +
-             "  }\n" +
-             "  def mvnHome = tool 'M3'\n" +
-             "  withEnv([\"PATH+MAVEN=${mvnHome}/bin\", \"M2_HOME=${mvnHome}\"]) {\n" +
-             "    sh 'mvn -B -Dmaven.test.failure.ignore verify'\n" +
-             "  }\n" +
-             "  input 'Ready to go?'\n" +
-             "  step([$class: 'ArtifactArchiver', artifacts: '**/target/*.jar', fingerprint: true])\n" + // TODO Jenkins 2.2+: archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
-             "  junit '**/target/surefire-reports/TEST-*.xml'\n" +
-             "}\n" +
-             "def version() {\n" +
-             "  def matcher = readFile('pom.xml') =~ '<version>(.+)</version>'\n" +
-             "  matcher ? matcher[0][1] : null\n" +
-             "}");
+                "node('remote') {\n" +
+                "  git 'https://github.com/jglick/simple-maven-project-with-tests.git'\n" +
+                "  def v = version()\n" +
+                "  if (v) {\n" +
+                "    echo \"Building version ${v}\"\n" +
+                "  }\n" +
+                "  def mvnHome = tool 'M3'\n" +
+                "  withEnv([\"PATH+MAVEN=${mvnHome}/bin\", \"M2_HOME=${mvnHome}\"]) {\n" +
+                "    sh 'mvn -B -Dmaven.test.failure.ignore verify'\n" +
+                "  }\n" +
+                "  input 'Ready to go?'\n" +
+                "  step([$class: 'ArtifactArchiver', artifacts: '**/target/*.jar', fingerprint: true])\n" + // TODO Jenkins 2.2+: archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
+                "  junit '**/target/surefire-reports/TEST-*.xml'\n" +
+                "}\n" +
+                "def version() {\n" +
+                "  def matcher = readFile('pom.xml') =~ '<version>(.+)</version>'\n" +
+                "  matcher ? matcher[0][1] : null\n" +
+                "}");
         job.sandbox.check();
         job.save();
         final Build build = job.startBuild();
