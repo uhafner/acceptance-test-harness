@@ -104,23 +104,23 @@ public class WorkflowPluginTest extends AbstractJUnitTest {
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
         job.script.set(
                 "node('remote') {\n" +
-                "  git 'https://github.com/jglick/simple-maven-project-with-tests.git'\n" +
-                "  def v = version()\n" +
-                "  if (v) {\n" +
-                "    echo \"Building version ${v}\"\n" +
-                "  }\n" +
-                "  def mvnHome = tool 'M3'\n" +
-                "  withEnv([\"PATH+MAVEN=${mvnHome}/bin\", \"M2_HOME=${mvnHome}\"]) {\n" +
-                "    sh 'mvn -B -Dmaven.test.failure.ignore verify'\n" +
-                "  }\n" +
-                "  input 'Ready to go?'\n" +
-                "  step([$class: 'ArtifactArchiver', artifacts: '**/target/*.jar', fingerprint: true])\n" + // TODO Jenkins 2.2+: archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
-                "  junit '**/target/surefire-reports/TEST-*.xml'\n" +
-                "}\n" +
-                "def version() {\n" +
-                "  def matcher = readFile('pom.xml') =~ '<version>(.+)</version>'\n" +
-                "  matcher ? matcher[0][1] : null\n" +
-                "}");
+                        "  git 'https://github.com/jglick/simple-maven-project-with-tests.git'\n" +
+                        "  def v = version()\n" +
+                        "  if (v) {\n" +
+                        "    echo \"Building version ${v}\"\n" +
+                        "  }\n" +
+                        "  def mvnHome = tool 'M3'\n" +
+                        "  withEnv([\"PATH+MAVEN=${mvnHome}/bin\", \"M2_HOME=${mvnHome}\"]) {\n" +
+                        "    sh 'mvn -B -Dmaven.test.failure.ignore verify'\n" +
+                        "  }\n" +
+                        "  input 'Ready to go?'\n" +
+                        "  step([$class: 'ArtifactArchiver', artifacts: '**/target/*.jar', fingerprint: true])\n" + // TODO Jenkins 2.2+: archiveArtifacts artifacts: '**/target/*.jar', fingerprint: true
+                        "  junit '**/target/surefire-reports/TEST-*.xml'\n" +
+                        "}\n" +
+                        "def version() {\n" +
+                        "  def matcher = readFile('pom.xml') =~ '<version>(.+)</version>'\n" +
+                        "  matcher ? matcher[0][1] : null\n" +
+                        "}");
         job.sandbox.check();
         job.save();
         final Build build = job.startBuild();
@@ -160,27 +160,27 @@ public class WorkflowPluginTest extends AbstractJUnitTest {
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
         job.script.set(
                 "node('master') {\n" +
-                // TODO could be switched to multibranch, in which case this initial `node` is unnecessary, and each branch can just `checkout scm`
-                "  git 'https://github.com/jenkinsci/parallel-test-executor-plugin-sample.git'\n" +
-                "  stash 'sources'\n" +
-                "}\n" +
-                "def splits = splitTests count(3)\n" +
-                "def branches = [:]\n" +
-                "for (int i = 0; i < splits.size(); i++) {\n" +
-                "  def exclusions = splits.get(i);\n" +
-                "  branches[\"split${i}\"] = {\n" +
-                "    node('!master') {\n" +
-                "      sh 'rm -rf *'\n" +
-                "      unstash 'sources'\n" +
-                "      writeFile file: 'exclusions.txt', text: exclusions.join(\"\\n\")\n" +
-                // Do not bother with ${tool 'M3'}; would take too long to unpack Maven on all slaves.
-                // TODO would be useful for ToolInstallation to support the URL installer, hosting the tool ZIP ourselves somewhere cached.
-                "      sh 'mvn -B -Dmaven.test.failure.ignore test'\n" +
-                "      junit 'target/surefire-reports/*.xml'\n" +
-                "    }\n" +
-                "  }\n" +
-                "}\n" +
-                "parallel branches");
+                        // TODO could be switched to multibranch, in which case this initial `node` is unnecessary, and each branch can just `checkout scm`
+                        "  git 'https://github.com/jenkinsci/parallel-test-executor-plugin-sample.git'\n" +
+                        "  stash 'sources'\n" +
+                        "}\n" +
+                        "def splits = splitTests count(3)\n" +
+                        "def branches = [:]\n" +
+                        "for (int i = 0; i < splits.size(); i++) {\n" +
+                        "  def exclusions = splits.get(i);\n" +
+                        "  branches[\"split${i}\"] = {\n" +
+                        "    node('!master') {\n" +
+                        "      sh 'rm -rf *'\n" +
+                        "      unstash 'sources'\n" +
+                        "      writeFile file: 'exclusions.txt', text: exclusions.join(\"\\n\")\n" +
+                        // Do not bother with ${tool 'M3'}; would take too long to unpack Maven on all slaves.
+                        // TODO would be useful for ToolInstallation to support the URL installer, hosting the tool ZIP ourselves somewhere cached.
+                        "      sh 'mvn -B -Dmaven.test.failure.ignore test'\n" +
+                        "      junit 'target/surefire-reports/*.xml'\n" +
+                        "    }\n" +
+                        "  }\n" +
+                        "}\n" +
+                        "parallel branches");
         job.sandbox.check();
         job.save();
         Build build = job.startBuild();
@@ -234,13 +234,13 @@ public class WorkflowPluginTest extends AbstractJUnitTest {
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
         job.script.set(
                 "node('" + slave.getName() + "') {\n" +
-                "  docker.image('cloudbees/java-build-tools').inside('--link=" + gitContainer.getCid() + ":git') {\n" +
-                // TODO JENKINS-30600: "    git url: '" + gitContainer.getRepoUrlInsideDocker("git") + "', credentialsId: 'gitcreds'\n" +
-                "    checkout([$class: 'GitSCM', userRemoteConfigs: [[url: '" + gitContainer.getRepoUrlInsideDocker("git") + "', credentialsId: 'gitcreds']], gitTool: 'jgit'])\n" +
-                "    sh 'mkdir ~/.ssh && echo StrictHostKeyChecking no > ~/.ssh/config'\n" +
-                "    sshagent(['gitcreds']) {sh 'ls -l $SSH_AUTH_SOCK && git pull origin master'}\n" +
-                "  }\n" +
-                "}");
+                        "  docker.image('cloudbees/java-build-tools').inside('--link=" + gitContainer.getCid() + ":git') {\n" +
+                        // TODO JENKINS-30600: "    git url: '" + gitContainer.getRepoUrlInsideDocker("git") + "', credentialsId: 'gitcreds'\n" +
+                        "    checkout([$class: 'GitSCM', userRemoteConfigs: [[url: '" + gitContainer.getRepoUrlInsideDocker("git") + "', credentialsId: 'gitcreds']], gitTool: 'jgit'])\n" +
+                        "    sh 'mkdir ~/.ssh && echo StrictHostKeyChecking no > ~/.ssh/config'\n" +
+                        "    sshagent(['gitcreds']) {sh 'ls -l $SSH_AUTH_SOCK && git pull origin master'}\n" +
+                        "  }\n" +
+                        "}");
         job.sandbox.check();
         job.save();
         assertThat(job.startBuild().shouldSucceed().getConsole(), containsString("-> FETCH_HEAD"));
@@ -254,9 +254,9 @@ public class WorkflowPluginTest extends AbstractJUnitTest {
         // Cf. GrapeTest.useBinary using JenkinsRule:
         FileUtils.write(new File(workflowLibs, "src/pkg/Lists.groovy"),
                 "package pkg\n" +
-                "@Grab('commons-primitives:commons-primitives:1.0')\n" +
-                "import org.apache.commons.collections.primitives.ArrayIntList\n" +
-                "static def arrayInt() {new ArrayIntList()}");
+                        "@Grab('commons-primitives:commons-primitives:1.0')\n" +
+                        "import org.apache.commons.collections.primitives.ArrayIntList\n" +
+                        "static def arrayInt() {new ArrayIntList()}");
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
         job.script.set("echo(/got ${pkg.Lists.arrayInt()}/)");
         job.sandbox.check();
