@@ -31,6 +31,7 @@ public class AnalysisPluginsTest extends AbstractJUnitTest {
 
         Build build = job.startBuild().waitUntilFinished();
 
-        assertThat(build.getConsole()).contains("[CheckStyle] [ERROR] No files found for pattern '**/checkstyle-result.xml'. Configuration error?\n");
+        assertThat(build.getConsole()).contains(
+                "[CheckStyle] [ERROR] No files found for pattern '**/checkstyle-result.xml'. Configuration error?\n");
     }
 }

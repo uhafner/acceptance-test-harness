@@ -8,8 +8,7 @@ import org.jenkinsci.test.acceptance.po.PageArea;
 import org.jenkinsci.test.acceptance.po.PageAreaImpl;
 import org.jenkinsci.test.acceptance.po.PostBuildStep;
 import org.openqa.selenium.By;
-import org.openqa.selenium.Keys;
-import org.openqa.selenium.WebElement;
+import org.openqa.selenium.support.ui.Select;
 
 /**
  * Page object for the IssuesRecorder of the warnings plugin (white mountains release).
@@ -104,14 +103,12 @@ public class IssuesRecorder extends AbstractStep implements PostBuildStep {
         }
 
         public void setTool(final String toolName) {
-            WebElement select = self().findElement(By.className("dropdownList"));
-            select.click();
-            select.findElement(by.option(toolName)).click();
-            select.sendKeys(Keys.TAB);
+            new Select(self().findElement(By.className("dropdownList"))).selectByVisibleText(toolName);
         }
 
         public void setPattern(final String pattern) {
             this.pattern.set(pattern);
         }
+
     }
 }
