@@ -33,4 +33,5 @@ public class AnalysisPluginsTest extends AbstractJUnitTest {
 
         assertThat(build.getConsole()).contains("[CheckStyle] [ERROR] No files found for pattern '**/checkstyle-result.xml'. Configuration error?\n");
     }
+
 }
