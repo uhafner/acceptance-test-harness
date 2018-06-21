@@ -128,5 +128,44 @@ public class AnalysisPluginsTest extends AbstractJUnitTest {
                 "[CheckStyle] Applying 2 filters on the set of 4 issues (3 issues have been removed)");
     }
 
+    /**
+     * Test that the default pattern for checkStyle is used, if no other pattern is specified.
+     */
+    @Test
+    public void should_use_default_pattern_xml_for_checkStyle_checked_result_on_console () {
+
+        FreeStyleJob job = jenkins.getJobs().create(FreeStyleJob.class);
+        //job.copyResource("/warnings_plugin/issue_filter_test/checkstyle-result.xml");
+
+        IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class);
+        recorder.setTool("CheckStyle");
+        recorder.setEnabledForFailure(true);
+        job.save();
+
+        Build build = job.startBuild().waitUntilFinished();
+
+        assertThat(build.getConsole()).contains("[CheckStyle] Using default pattern '**/checkstyle-result.xml' since user defined pattern is not set\n");
+        assertThat(build.getConsole()).contains("[CheckStyle] Created analysis result for 0 issues (found 0 new issues, fixed 0 issues)\n");
+    }
+
+    /**
+     * Test that the specified pattern for checkStyle is used, if one specified.
+     */
+    @Test
+    public void should_use_specified_pattern_xml_for_checkStyle_checked_result_on_console () {
+
+        FreeStyleJob job = jenkins.getJobs().create(FreeStyleJob.class);
+
+        IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class);
+        recorder.setTool("CheckStyle", "issue_filter/checkstyle-result.xml");
+        recorder.setEnabledForFailure(true);
+        job.save();
+
+        Build build = job.startBuild().waitUntilFinished();
+
+        assertThat(build.getConsole()).contains("[CheckStyle] [ERROR] No files found for pattern 'issue_filter/checkstyle-result.xml'. Configuration error?\n");
+        assertThat(build.getConsole()).contains("[CheckStyle] Created analysis result for 0 issues (found 0 new issues, fixed 0 issues)\n");
+    }
+
 }
 
