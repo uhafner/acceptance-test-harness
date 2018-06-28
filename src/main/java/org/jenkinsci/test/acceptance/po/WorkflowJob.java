@@ -28,6 +28,7 @@ import javax.annotation.Nonnull;
 import java.net.URL;
 import java.util.concurrent.TimeUnit;
 
+import org.apache.commons.lang.SystemUtils;
 import org.jenkinsci.test.acceptance.junit.Resource;
 import org.openqa.selenium.By;
 import org.openqa.selenium.NoSuchElementException;
@@ -99,8 +100,11 @@ public class WorkflowJob extends Job {
 
     public String copyResourceStep(String filePath) {
         final Resource res = resource(filePath);
+        if(SystemUtils.IS_OS_WINDOWS){
+            return String.format("bat '''%s'''%n", copyResourceBatch(res, res.getName()));
+        }
         return String.format("sh '''%s'''%n", copyResourceShell(res, res.getName()));
-    }
+}
 
     public void delete() {
         open();
