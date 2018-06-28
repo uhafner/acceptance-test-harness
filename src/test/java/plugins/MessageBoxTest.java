@@ -28,9 +28,7 @@ public class MessageBoxTest extends AbstractJUnitTest {
     public void shouldBeOkIfContentsOfMsgBoxesAreCorrectForFreeStyleJob() {
 
         FreeStyleJob job = createFreeStyleJob(WARNINGS_XML);
-        job.addPublisher(IssuesRecorder.class, recorder -> {
-            recorder.setTool("CheckStyle", "**/checkstyle-result.xml");
-        });
+        job.addPublisher(IssuesRecorder.class, recorder -> recorder.setTool("CheckStyle", "**/checkstyle-result.xml"));
         job.save();
         job.startBuild().waitUntilFinished();
 
@@ -85,9 +83,9 @@ public class MessageBoxTest extends AbstractJUnitTest {
     }
 
     /**
-     * Helping method for creating a Pipeline build.
+     * Helping method for creating a Pipeline job.
      * @param resourceFile to be loaded in the pipeline step
-     * @return
+     * @return pipeline job
      */
     private WorkflowJob createPipelineWithResource(String resourceFile) {
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
@@ -102,9 +100,9 @@ public class MessageBoxTest extends AbstractJUnitTest {
     }
 
     /**
-     * Helping method for creating a FreeStyle build.
-     * @param resourcesToCopy to copy for the build
-     * @return
+     * Helping method for creating a FreeStyle job.
+     * @param resourcesToCopy to copy for the job
+     * @return freestyle job
      */
     private FreeStyleJob createFreeStyleJob(final String... resourcesToCopy) {
         FreeStyleJob job = jenkins.getJobs().create(FreeStyleJob.class);
