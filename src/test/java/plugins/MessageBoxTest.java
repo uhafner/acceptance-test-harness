@@ -14,11 +14,12 @@ import static plugins.MessageBoxAssert.*;
  * UI Test for the PageObject {@link MessageBox}
  * @author Alexander Praegla, Nikolai Wohlgemuth, Arne Schöntag
  */
-@WithPlugins({"warnings", "checkstyle"})
+@WithPlugins({"warnings"})
 public class MessageBoxTest extends AbstractJUnitTest {
     private static final String WARNINGS_PLUGIN_PREFIX = "/warnings_plugin/white-mountains/";
-    private static final String WARNINGS_XML = "checkstyle-result.xml";
-    private static final String CHECKSTYLE_PLUGIN_ROOT = WARNINGS_PLUGIN_PREFIX + "message_box/";
+    private static final String WARNINGS_PLUGIN_ROOT = WARNINGS_PLUGIN_PREFIX + "message_box/";
+    private static final String CHECKSTYLE_XML = "checkstyle-result.xml";
+    private static final String CHECKSTYLE_URL = "lastBuild/checkstyleResult/info/";
 
     /**
      * Builds a FreeStyle build and that builds with a xml file
@@ -27,12 +28,12 @@ public class MessageBoxTest extends AbstractJUnitTest {
     @Test
     public void shouldBeOkIfContentsOfMsgBoxesAreCorrectForFreeStyleJob() {
 
-        FreeStyleJob job = createFreeStyleJob(WARNINGS_XML);
+        FreeStyleJob job = createFreeStyleJob(CHECKSTYLE_XML);
         job.addPublisher(IssuesRecorder.class, recorder -> recorder.setTool("CheckStyle", "**/checkstyle-result.xml"));
         job.save();
         job.startBuild().waitUntilFinished();
 
-        MessageBox messageBox = new MessageBox(job);
+        MessageBox messageBox = new MessageBox(job, CHECKSTYLE_URL);
         messageBox.open();
 
         // Check Error Panel
@@ -59,10 +60,10 @@ public class MessageBoxTest extends AbstractJUnitTest {
     @Test
     public void shouldBeOkIfContentsOfMsgBoxesAreCorrectForPipelineJob() {
 
-        WorkflowJob job = createPipelineWithResource(WARNINGS_XML);
+        WorkflowJob job = createPipelineWithResource(CHECKSTYLE_XML);
         job.startBuild().waitUntilFinished();
 
-        MessageBox messageBox = new MessageBox(job);
+        MessageBox messageBox = new MessageBox(job, CHECKSTYLE_URL);
         messageBox.open();
 
         // Check Error Panel
@@ -89,11 +90,11 @@ public class MessageBoxTest extends AbstractJUnitTest {
      */
     private WorkflowJob createPipelineWithResource(String resourceFile) {
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
-        String resource = job.copyResourceStep(CHECKSTYLE_PLUGIN_ROOT + resourceFile);
+        String resource = job.copyResourceStep(WARNINGS_PLUGIN_ROOT + resourceFile);
         job.script.set("node {\n" +
-                        resource.replace("\\", "\\\\") +
-                        "recordIssues enabledForFailure: true, tools: [[pattern: '', tool: [$class: 'CheckStyle']]]" +
-                        "}");
+                resource.replace("\\", "\\\\") +
+                "recordIssues enabledForFailure: true, tools: [[pattern: '', tool: [$class: 'CheckStyle']]]" +
+                "}");
         job.sandbox.check();
         job.save();
         return job;
@@ -107,7 +108,7 @@ public class MessageBoxTest extends AbstractJUnitTest {
     private FreeStyleJob createFreeStyleJob(final String... resourcesToCopy) {
         FreeStyleJob job = jenkins.getJobs().create(FreeStyleJob.class);
         for (String resource : resourcesToCopy) {
-            job.copyResource(resource(CHECKSTYLE_PLUGIN_ROOT + resource));
+            job.copyResource(resource(WARNINGS_PLUGIN_ROOT + resource));
         }
         return job;
     }
