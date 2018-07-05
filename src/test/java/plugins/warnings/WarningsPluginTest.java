@@ -51,6 +51,7 @@ import static plugins.warnings.assertions.Assertions.*;
  * @author Arne Schöntag
  * @author Alexandra Wenzel
  * @author Nikolai Wohlgemuth
+ * @author Martin Weibel
  */
 @WithPlugins("warnings")
 public class WarningsPluginTest extends AbstractJUnitTest {
@@ -679,6 +680,103 @@ public class WarningsPluginTest extends AbstractJUnitTest {
             throw new AssertionError("Can't find resource " + name);
         }
         return Paths.get(resource.toURI());
+    }
+
+    /**
+     * Test that the default pattern for checkStyle is used (file is not in workspace), if no other pattern is specified.
+     */
+    @Test
+    public void should_use_default_pattern_xml_is_not_in_workspace_for_checkStyle () {
+
+        FreeStyleJob job = jenkins.getJobs().create(FreeStyleJob.class);
+
+        IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class);
+        recorder.setTool("CheckStyle");
+        recorder.setEnabledForFailure(true);
+        job.save();
+
+        Build build = job.startBuild().waitUntilFinished();
+
+        AnalysisSummary summaryPage = new AnalysisSummary(build);
+        summaryPage.open();
+
+        assertThat(summaryPage.getSummaryBoxByName("CheckStyle").getTitle().getText()).contains("CheckStyle: No warnings");
+
+        LogMessagesView logMessagesView = new LogMessagesView(build, CHECKSTYLE_ID);
+        logMessagesView.open();
+
+        assertThat(logMessagesView).hasErrorMessagesSize(1);
+        assertThat(logMessagesView).containsErrorMessage("No files found for pattern '**/checkstyle-result.xml'. Configuration error?");
+    }
+
+    /**
+     * Test that the default pattern for checkStyle is used (file is in workspace), if no other pattern is specified.
+     */
+    @Test
+    public void should_use_default_pattern_xml_is_in_workspace_for_checkStyle () {
+
+        FreeStyleJob job = jenkins.getJobs().create(FreeStyleJob.class);
+        job.copyResource("/warnings_plugin/checkstyle-result.xml");
+
+        IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class);
+        recorder.setTool("CheckStyle");
+        recorder.setEnabledForFailure(true);
+        job.save();
+
+        Build build = job.startBuild().waitUntilFinished();
+
+        AnalysisSummary summaryPage = new AnalysisSummary(build);
+        summaryPage.open();
+
+        assertThat(summaryPage.getSummaryBoxByName("CheckStyle").getTitle().getText()).contains("CheckStyle: 11 warnings");
+    }
+
+    /**
+     * Test that the specified pattern for checkStyle is used (file is not workspace), if one is specified.
+     */
+    @Test
+    public void should_use_specified_pattern_xml_is_not_in_workspace_for_checkStyle () {
+
+        FreeStyleJob job = jenkins.getJobs().create(FreeStyleJob.class);
+
+        IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class);
+        recorder.setTool("CheckStyle", "**/checkstyle-for-test.xml");
+        recorder.setEnabledForFailure(true);
+        job.save();
+
+        Build build = job.startBuild().waitUntilFinished();
+
+        AnalysisSummary summaryPage = new AnalysisSummary(build);
+        summaryPage.open();
+        assertThat(summaryPage.getSummaryBoxByName("CheckStyle").getTitle().getText()).contains("CheckStyle: No warnings");
+
+        LogMessagesView logMessagesView = new LogMessagesView(build, CHECKSTYLE_ID);
+        logMessagesView.open();
+
+        assertThat(logMessagesView).hasErrorMessagesSize(1);
+        assertThat(logMessagesView).containsErrorMessage("No files found for pattern '**/checkstyle-for-test.xml'. Configuration error?");
+    }
+
+    /**
+     * Test that the specified pattern for checkStyle is used (file is in workspace), if one is specified.
+     */
+    @Test
+    public void should_use_specified_pattern_xml_is_in_workspace_for_checkStyle_checked () {
+
+        FreeStyleJob job = jenkins.getJobs().create(FreeStyleJob.class);
+        job.copyResource("/warnings_plugin/checkstyle-for-test.xml");
+
+        IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class);
+        recorder.setTool("CheckStyle", "**/checkstyle-for-test.xml");
+        recorder.setEnabledForFailure(true);
+        job.save();
+
+        Build build = job.startBuild().waitUntilFinished();
+
+        AnalysisSummary summaryPage = new AnalysisSummary(build);
+        summaryPage.open();
+
+        assertThat(summaryPage.getSummaryBoxByName("CheckStyle").getTitle().getText()).contains("CheckStyle: 776 warnings");
     }
 }
 

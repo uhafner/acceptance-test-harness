@@ -20,7 +20,7 @@ public class AnalysisSummary extends ContainerPageObject {
      * Creates a new PageObject which represents the summary page of a build.
      */
     public AnalysisSummary(final Build build) {
-        super(build, build.url("/"));
+        super(build, build.url);
     }
 
     public SummaryBoxPageArea getSummaryBoxByName(String pluginName) {
