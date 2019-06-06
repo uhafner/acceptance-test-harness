@@ -107,6 +107,18 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Inject
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
 
+    @Test
+    public void qualityGateFreeStyle() {
+        FreeStyleJob job = createFreeStyleJob();
+
+    }
+
+    @Test
+    public void qualityGatePipeline() {
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+
+    }
+
     /**
      * Runs a pipeline with checkstyle and pmd. Verifies the expansion of tokens with the token-macro plugin.
      */
