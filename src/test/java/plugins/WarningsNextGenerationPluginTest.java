@@ -475,6 +475,43 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         verifyInfoAndErrorMessages(build);
     }
 
+    @Test
+    public void should_reset_quality_gate_freestyle() {
+        FreeStyleJob job = createFreeStyleJob("aggregation/checkstyle1.xml");
+        job.addPublisher(IssuesRecorder.class, recorder -> {
+            recorder.setTool("CheckStyle", "**/checkstyle1.xml");
+            recorder.setSourceCodeEncoding("UTF-8");
+            recorder.addQualityGateConfiguration(3,QualityGateType.TOTAL, true);
+        });
+        job.save();
+        Build build = buildJob(job).shouldBe(Result.UNSTABLE);
+
+        build.open();
+
+        AnalysisResult page = openAnalysisResult(build, CHECKSTYLE_ID);
+
+        IssuesTable issuesTable = page.openIssuesTable();
+        assertThat(issuesTable).hasSize(3);
+
+        //Create new job with more warnings
+        jenkins.restart();
+        reconfigureJobWithResource(job, "aggregation/checkstyle2.xml");
+        job.editPublisher(IssuesRecorder.class, recorder -> {
+            recorder.setTool("CheckStyle", "**/checkstyle2.xml");
+            recorder.setSourceCodeEncoding("UTF-8");
+            recorder.addQualityGateConfiguration(3,QualityGateType.TOTAL, true);
+        });
+        build = buildJob(job).shouldBe(Result.FAILURE);
+
+        build.open();
+
+        page = openAnalysisResult(build, CHECKSTYLE_ID);
+
+        issuesTable = page.openIssuesTable();
+        assertThat(issuesTable).hasSize(4);
+
+    }
+
     /**
      * Runs a pipeline that publishes checkstyle warnings. Verifies the content of the info and error
      * log view.
