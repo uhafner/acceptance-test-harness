@@ -17,4 +17,4 @@ docker build --build-arg=uid="$uid" --build-arg=gid="$gid" "$DIR/src/main/resour
 
 run_opts="--rm --publish-all --user ath-user --workdir /home/ath-user/sources --shm-size 2g"
 run_drive_mapping="-v /var/run/docker.sock:/var/run/docker.sock -v $(pwd):/home/ath-user/sources -v ${HOME}/.m2/repository:/home/ath-user/.m2/repository"
-docker run $run_opts $run_drive_mapping $tag /bin/bash -c "set-java.sh $java_version; vnc.sh ; export DISPLAY=:42; run.sh firefox latest -Dmaven.test.failure.ignore=true -DforkCount=1 -B -Dtest=WarningsNextGenerationPluginTest"
+docker run $run_opts $run_drive_mapping $tag /bin/bash -c "set-java.sh $java_version; vnc.sh ; export DISPLAY=:42; run.sh firefox latest -DforkCount=1 -B -Dtest=WarningsNextGenerationPluginTest"
