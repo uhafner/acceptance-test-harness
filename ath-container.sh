@@ -11,7 +11,7 @@ gid=10000
 tag="jenkins/ath"
 java_version="${java_version:-8}"
 
-#mvn install -DskipTests
+mvn install -DskipTests
 
 docker build --build-arg=uid="$uid" --build-arg=gid="$gid" "$DIR/src/main/resources/ath-container" -t "$tag"
 
