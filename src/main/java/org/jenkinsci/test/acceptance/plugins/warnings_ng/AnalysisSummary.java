@@ -228,6 +228,20 @@ public class AnalysisSummary extends PageObject {
     }
 
     /**
+     * Clicks the link reseting the failed quality gate.
+     *
+     * @throws NoSuchElementException
+     *         When the quality gate did not fail so there is no link to click.
+     */
+    public void resetQualityGate() {
+        for (WebElement result : results) {
+            if (result.getText().contains("Quality gate")) {
+                result.findElement(by.tagName("a")).click();
+            }
+        }
+    }
+
+    /**
      * Returns a clickable WebElement (a-tag), by a part of the elements text.
      *
      * @param namePart
