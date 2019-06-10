@@ -9,8 +9,10 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map.Entry;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
+import org.junit.Before;
 import org.junit.Test;
 
 import com.google.inject.Inject;
@@ -48,6 +50,7 @@ import org.jenkinsci.test.acceptance.po.FreeStyleJob;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
+import org.jenkinsci.test.acceptance.slave.SlaveController;
 
 import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
 
@@ -90,6 +93,16 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     private static final String NO_PACKAGE = "-";
 
+    @Inject
+    SlaveController slaveController;
+    Slave slave;
+
+    @Before
+    public void setUp() throws ExecutionException, InterruptedException {
+        slave = slaveController.install(jenkins).get();
+        assertThat(slave.isOnline()).isTrue();
+    }
+
     /**
      * Credentials to access the docker container. The credentials are stored with the specified ID and use the provided
      * SSH key. Use the following annotation on your test case to use the specified docker container as git server or
@@ -108,13 +121,80 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
 
     @Test
-    public void qualityGateFreeStyle() {
-        FreeStyleJob job = createFreeStyleJob();
+    public void should_record_with_qualitygate_reset_FreeStyle() {
+        FreeStyleJob job = createFreeStyleJob("build_status_test/build_01/checkstyle-result.xml");
+        job.setLabelExpression(slave.getName());
+        job.addPublisher(IssuesRecorder.class, recorder -> {
+            recorder.addTool("CheckStyle");
+            recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, false);
+        });
+        job.save();
+
+        Build build = buildJob(job);
+        build.open();
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
+                "-> found 1 file",
+                "-> found 1 issue (skipped 0 duplicates)",
+                "-> Some quality gates have been missed: overall result is FAILED");
+
+        reconfigureJobWithResource(job, "build_status_test/build_02/checkstyle-result.xml");
+
+        jenkins.restart();
+        job.configure(() -> job.setLabelExpression(slave.getName()));
+        assertThat(slave.isOnline()).isTrue();
+
+        build = buildJob(job);
+        build.open();
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
+                "-> found 1 file",
+                "-> found 3 issues (skipped 0 duplicates)",
+                "-> Some quality gates have been missed: overall result is FAILED");
+        assertThat(build.getConsole()).contains(
+                "[CheckStyle] Created analysis result for 3 issues (found 0 new issues, fixed 0 issues)");
+    }
+
+    @Test
+    public void should_record_with_qualitygate_reset_Pipeline() {
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
 
     }
 
     @Test
-    public void qualityGatePipeline() {
+    public void should_record_without_qualitygate_reset_FreeStyle() {
+        FreeStyleJob job = createFreeStyleJob("build_status_test/build_01/checkstyle-result.xml");
+        job.setLabelExpression(slave.getName());
+        job.addPublisher(IssuesRecorder.class, recorder -> {
+            recorder.addTool("CheckStyle");
+            recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, false);
+        });
+        job.save();
+
+        Build build = buildJob(job);
+        build.open();
+        new AnalysisSummary(build, CHECKSTYLE_ID).resetQualityGate();
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
+                "-> found 1 file",
+                "-> found 1 issue (skipped 0 duplicates)",
+                "-> Some quality gates have been missed: overall result is FAILED");
+
+        reconfigureJobWithResource(job, "build_status_test/build_02/checkstyle-result.xml");
+
+        jenkins.restart();
+        job.configure(() -> job.setLabelExpression(slave.getName()));
+        assertThat(slave.isOnline()).isTrue();
+
+        build = buildJob(job);
+        build.open();
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
+                "-> found 1 file",
+                "-> found 3 issues (skipped 0 duplicates)",
+                "-> Some quality gates have been missed: overall result is FAILED");
+        assertThat(build.getConsole()).contains(
+                "[CheckStyle] Created analysis result for 3 issues (found 0 new issues, fixed 0 issues)");
+    }
+
+    @Test
+    public void should_record_without_qualitygate_reset_Pipeline() {
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
 
     }
@@ -471,8 +551,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs a freestyle job that publishes checkstyle warnings. Verifies the content of the info and error
-     * log view.
+     * Runs a freestyle job that publishes checkstyle warnings. Verifies the content of the info and error log view.
      */
     @Test
     public void should_show_info_and_error_messages_in_freestyle_job() {
@@ -488,8 +567,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs a pipeline that publishes checkstyle warnings. Verifies the content of the info and error
-     * log view.
+     * Runs a pipeline that publishes checkstyle warnings. Verifies the content of the info and error log view.
      */
     @Test
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
@@ -534,7 +612,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Creates and builds a maven job and verifies that all warnings are shown in the summary and details views.
      */
-    @Test @WithPlugins("maven-plugin")
+    @Test
+    @WithPlugins("maven-plugin")
     public void should_show_maven_warnings_in_maven_project() {
         MavenModuleSet job = createMavenProject();
         copyResourceFilesToWorkspace(job, SOURCE_VIEW_FOLDER + "pom.xml");
@@ -574,7 +653,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Verifies that package and namespace names are resolved.
      */
-    @Test @WithPlugins("maven-plugin")
+    @Test
+    @WithPlugins("maven-plugin")
     public void should_resolve_packages_and_namespaces() {
         MavenModuleSet job = createMavenProject();
         job.copyDir(job.resource(SOURCE_VIEW_FOLDER));
@@ -624,7 +704,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Verifies that warnings can be parsed on a agent as well.
      */
-    @Test @WithDocker @WithPlugins("ssh-slaves")
+    @Test
+    @WithDocker
+    @WithPlugins("ssh-slaves")
     @WithCredentials(credentialType = WithCredentials.SSH_USERNAME_PRIVATE_KEY, values = {CREDENTIALS_ID, CREDENTIALS_KEY})
     public void should_parse_warnings_on_agent() {
         DumbSlave dockerAgent = createDockerAgent();
