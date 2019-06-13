@@ -39,10 +39,10 @@ public class Mailtrap extends MailService {
     // these default values is the account that the project "owns".
     private static final int PORT = 2525;
     private static final String HOST = "smtp.mailtrap.io";
-    private String MAILBOX = "selenium-tests-69507a9ef0aa7fa5";
-    private String PASSWORD = "72a80a49ae5ab81d";
-    private String TOKEN = "ceb98fc6d89ea0cf44e368916cec41c7";
-    private String INBOX_ID = "16868";
+    private String MAILBOX = "573ae4ab6bb4fd";
+    private String PASSWORD = "bfb3453961c9b3";
+    private String TOKEN = "3d6bdec08f34c73a9f736025cbb60085";
+    private String INBOX_ID = "627392";
 
     /**
      * Unique ID for this test run.

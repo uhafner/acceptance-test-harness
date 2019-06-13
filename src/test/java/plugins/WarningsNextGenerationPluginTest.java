@@ -8,8 +8,13 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map.Entry;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
+
+import javax.mail.MessagingException;
+import javax.mail.internet.MimeMessage;
 
 import org.junit.Test;
 
@@ -21,6 +26,7 @@ import org.jenkinsci.test.acceptance.junit.AbstractJUnitTest;
 import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
+import org.jenkinsci.test.acceptance.plugins.mailer.Mailer;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
@@ -48,6 +54,7 @@ import org.jenkinsci.test.acceptance.po.FreeStyleJob;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
+import org.jenkinsci.test.acceptance.utils.mail.MailService;
 
 import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
 
@@ -103,6 +110,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      */
     private static final String CREDENTIALS_ID = "git";
     private static final String CREDENTIALS_KEY = "/org/jenkinsci/test/acceptance/docker/fixtures/GitContainer/unsafe";
+
+    @Inject
+    private MailService mailService;
 
     @Inject
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
@@ -660,6 +670,79 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(summary).hasNewSize(0);
         assertThat(summary).hasFixedSize(0);
         assertThat(summary).hasReferenceBuild(0);
+    }
+
+    /**
+     * Runs a pipeline with checkstyle and pmd. Verifies the expansion of tokens with the token-macro plugin.
+     */
+    @Test
+    @WithPlugins({"token-macro", "workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
+    public void should_run_pipeline_and_send_mail() throws IOException, MessagingException {
+        mailService.setup(jenkins);
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+
+        job.addPublisher(Mailer.class, m -> {m.recipients.set("info@test.de");});
+
+        String checkstyle = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle1.xml");
+        String pmd = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/pmd.xml");
+
+        String script = asStage(checkstyle.replace("\\", "\\\\")
+                                      + pmd.replace("\\", "\\\\")
+                                      + "recordIssues tool: checkStyle(pattern: '**/checkstyle*')\n"
+                                      + "recordIssues tool: pmdParser(pattern: '**/pmd*')\n"
+                                      + "def total = tm('${ANALYSIS_ISSUES_COUNT}')\n"
+                                      + "echo '[total=' + total + ']' \n"
+                                      + "def checkstyle = tm('${ANALYSIS_ISSUES_COUNT, tool=\"checkstyle\"}')\n"
+                                      + "echo '[checkstyle=' + checkstyle + ']' \n"
+                                      + "def pmd = tm('${ANALYSIS_ISSUES_COUNT, tool=\"pmd\"}')\n"
+                                      + "echo '[pmd=' + pmd + ']'");
+
+        script += asStage("recordIssues tool: javaDoc(pattern:'**/*issues.txt', reportEncoding:'UTF-8'), "
+                                + "qualityGates: [[threshold: 6, type: 'TOTAL', unstable: true]]");
+
+        job.script.set(script);
+        job.sandbox.check();
+
+        Build build = buildJob(job);
+
+        job.save();
+
+        /*
+        mailService.getAllMails();
+
+        mailService.assertMail(
+                Pattern.compile("Build failed in Jenkins: .* #1"), "info@test.de",
+                Pattern.compile(job.name)
+        );
+        */
+
+        //assertThat(build.getResult()).isEqualTo(Result.UNSTABLE);
+        assertThat(build.getConsole()).contains("[total=7]");
+        assertThat(build.getConsole()).contains("[checkstyle=3]");
+        assertThat(build.getConsole()).contains("[pmd=4]");
+    }
+
+    /**
+     * Wraps the specified steps into a stage.
+     *
+     * @param steps
+     *         the steps of the stage
+     *
+     * @return the pipeline script
+     */
+    @SuppressWarnings({"UseOfSystemOutOrSystemErr", "PMD.ConsecutiveLiteralAppends"})
+    protected String asStage(final String... steps) {
+        StringBuilder script = new StringBuilder(1024);
+        script.append("node {\n");
+        script.append("  stage ('Integration Test') {\n");
+        for (String step : steps) {
+            script.append("    ");
+            script.append(step);
+            script.append('\n');
+        }
+        script.append("  }\n");
+        script.append("}\n");
+        return script.toString();
     }
 
     private FreeStyleJob createFreeStyleJobForDockerAgent(final Slave dockerAgent, final String... resourcesToCopy) {
