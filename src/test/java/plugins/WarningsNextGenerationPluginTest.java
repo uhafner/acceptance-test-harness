@@ -673,8 +673,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     @WithPlugins({"token-macro", "workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
     public void should_run_pipeline_and_send_mail() throws IOException, MessagingException {
-        //mailService.setup(jenkins);
+        mailService.setup(jenkins);
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+
+        job.addPublisher(Mailer.class, m -> {m.recipients.set("info@test.de");});
 
         String checkstyle = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle1.xml");
         String pmd = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/pmd.xml");
@@ -698,8 +700,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         Build build = buildJob(job);
 
-
-        //job.addPublisher(Mailer.class, m -> {m.recipients.set("info@test.de");});
         job.save();
 
         /*
