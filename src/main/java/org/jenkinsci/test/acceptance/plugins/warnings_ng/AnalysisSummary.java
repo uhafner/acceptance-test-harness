@@ -236,7 +236,7 @@ public class AnalysisSummary extends PageObject {
     public void resetQualityGate() {
         for (WebElement result : results) {
             if (result.getText().contains("Quality gate")) {
-                result.findElement(by.tagName("a")).click();
+                result.findElement(by.tagName("button")).click();
             }
         }
     }

@@ -12,8 +12,8 @@ import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
-import org.junit.Before;
 import org.junit.Test;
+import org.openqa.selenium.NoSuchElementException;
 
 import com.google.inject.Inject;
 
@@ -95,13 +95,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     @Inject
     SlaveController slaveController;
-    Slave slave;
-
-    @Before
-    public void setUp() throws ExecutionException, InterruptedException {
-        slave = slaveController.install(jenkins).get();
-        assertThat(slave.isOnline()).isTrue();
-    }
 
     /**
      * Credentials to access the docker container. The credentials are stored with the specified ID and use the provided
@@ -120,12 +113,29 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Inject
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
 
+    public Slave createDockerAgentWithoutCredentials() throws ExecutionException, InterruptedException {
+        Slave agent = slaveController.install(jenkins).get();
+        assertThat(agent.isOnline()).isTrue();
+        return agent;
+    }
+
+    /**
+     * Runs a freestyle job within a docker agent. Builds a job with failing quality gate and rebuilds after a restart
+     * without reseting the quality gate. ToDo: needs to check if the reset button is not visible for others (not job
+     * owner)
+     *
+     * @throws ExecutionException
+     *         When agent creation fails.
+     * @throws InterruptedException
+     *         When waiting for agent to start was interrupted.
+     */
     @Test
-    public void should_record_with_qualitygate_reset_FreeStyle() {
-        FreeStyleJob job = createFreeStyleJob("build_status_test/build_01/checkstyle-result.xml");
-        job.setLabelExpression(slave.getName());
+    public void should_record_without_qualitygate_reset_FreeStyle() throws ExecutionException, InterruptedException {
+        Slave agent = createDockerAgentWithoutCredentials();
+        FreeStyleJob job = createFreeStyleJob("quality_gate/1/checkstyle-result.xml");
+        job.setLabelExpression(agent.getName());
         job.addPublisher(IssuesRecorder.class, recorder -> {
-            recorder.addTool("CheckStyle");
+            recorder.setTool("CheckStyle");
             recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, false);
         });
         job.save();
@@ -137,11 +147,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 "-> found 1 issue (skipped 0 duplicates)",
                 "-> Some quality gates have been missed: overall result is FAILED");
 
-        reconfigureJobWithResource(job, "build_status_test/build_02/checkstyle-result.xml");
-
+        // ToDo: make sure the button is not visible for others
+        reconfigureJobWithResource(job, "quality_gate/3/checkstyle-result.xml");
         jenkins.restart();
-        job.configure(() -> job.setLabelExpression(slave.getName()));
-        assertThat(slave.isOnline()).isTrue();
+        job.open();
 
         build = buildJob(job);
         build.open();
@@ -153,20 +162,141 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 "[CheckStyle] Created analysis result for 3 issues (found 0 new issues, fixed 0 issues)");
     }
 
+    /**
+     * Runs a pipeline within a docker agent. Builds a job with failing quality gate and rebuilds after a restart
+     * without reseting the quality gate.
+     *
+     * @throws ExecutionException
+     *         When agent creation fails.
+     * @throws InterruptedException
+     *         When waiting for agent to start was interrupted.
+     */
     @Test
-    public void should_record_with_qualitygate_reset_Pipeline() {
+    public void should_record_without_qualitygate_reset_Pipeline() throws ExecutionException, InterruptedException {
+        Slave agent = createDockerAgentWithoutCredentials();
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+        String resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "quality_gate/1/checkstyle-result.xml");
+        job.script.set("pipeline {\n"
+                + " agent{ label '" + agent.getName() + "' }\n"
+                + " stages { \n"
+                + "  stage('build') {\n"
+                + "   steps {\n"
+                + resource.replace("\\", "\\\\")
+                + "   }\n"
+                + "  }\n  stage('record issues') {\n"
+                + "   steps {\n"
+                + "    recordIssues qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]], tools: [checkStyle()]\n"
+                + "   }\n  }\n }\n}");
+        job.sandbox.check();
+        job.save();
 
+        Build build = buildJob(job);
+        build.open();
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
+                "-> found 1 file",
+                "-> found 1 issue (skipped 0 duplicates)",
+                "-> Some quality gates have been missed: overall result is FAILED");
+
+        job.configure();
+        resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "quality_gate/3/checkstyle-result.xml");
+        job.script.set("pipeline {\n"
+                + " agent{ label '" + agent.getName() + "' }\n"
+                + " stages { \n"
+                + "  stage('build') {\n"
+                + "   steps {\n"
+                + resource.replace("\\", "\\\\")
+                + "   }\n"
+                + "  }\n  stage('record issues') {\n"
+                + "   steps {\n"
+                + "    recordIssues qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]], tools: [checkStyle()]\n"
+                + "   }\n  }\n }\n}");
+        job.save();
+        jenkins.restart();
+        job.open();
+
+        build = buildJob(job);
+        build.open();
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
+                "-> found 1 file",
+                "-> found 3 issues (skipped 0 duplicates)",
+                "-> Some quality gates have been missed: overall result is FAILED");
+        assertThat(build.getConsole()).contains(
+                "[CheckStyle] Created analysis result for 3 issues (found 0 new issues, fixed 0 issues)");
     }
 
+    /**
+     * Runs a freestyle job within a docker agent. Builds a job with failing quality gate and rebuilds after a restart
+     * with reseting the quality gate. After reseting it tests that the button actually disappeared.
+     *
+     * @throws ExecutionException
+     *         When agent creation fails.
+     * @throws InterruptedException
+     *         When waiting for agent to start was interrupted.
+     */
     @Test
-    public void should_record_without_qualitygate_reset_FreeStyle() {
-        FreeStyleJob job = createFreeStyleJob("build_status_test/build_01/checkstyle-result.xml");
-        job.setLabelExpression(slave.getName());
+    public void should_record_with_qualitygate_reset_FreeStyle() throws ExecutionException, InterruptedException {
+        Slave agent = createDockerAgentWithoutCredentials();
+        FreeStyleJob job = createFreeStyleJob("quality_gate/1/checkstyle-result.xml");
+        job.setLabelExpression(agent.getName());
         job.addPublisher(IssuesRecorder.class, recorder -> {
-            recorder.addTool("CheckStyle");
+            recorder.setTool("CheckStyle");
             recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, false);
         });
+        job.save();
+
+        Build build1 = buildJob(job);
+        build1.open();
+        assertThatExceptionOfType(NoSuchElementException.class).isThrownBy(() -> {
+            new AnalysisSummary(build1, CHECKSTYLE_ID).resetQualityGate();
+            sleep(1000);
+            new AnalysisSummary(build1, CHECKSTYLE_ID).resetQualityGate();
+        });
+
+        assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
+                "-> found 1 file",
+                "-> found 1 issue (skipped 0 duplicates)",
+                "-> Some quality gates have been missed: overall result is FAILED");
+
+        reconfigureJobWithResource(job, "quality_gate/3/checkstyle-result.xml");
+        jenkins.restart();
+
+        Build build2 = buildJob(job);
+        build2.open();
+        assertThat(new AnalysisSummary(build2, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
+                "-> found 1 file",
+                "-> found 3 issues (skipped 0 duplicates)",
+                "-> Some quality gates have been missed: overall result is FAILED");
+        assertThat(build2.getConsole()).contains(
+                "[CheckStyle] Created analysis result for 3 issues (found 0 new issues, fixed 0 issues)");
+    }
+
+    /**
+     * Runs a pipeline within a docker agent. Builds a job with failing quality gate and rebuilds after a restart with
+     * reseting the quality gate.
+     *
+     * @throws ExecutionException
+     *         When agent creation fails.
+     * @throws InterruptedException
+     *         When waiting for agent to start was interrupted.
+     */
+    @Test
+    public void should_record_with_qualitygate_reset_Pipeline() throws ExecutionException, InterruptedException {
+        Slave agent = createDockerAgentWithoutCredentials();
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+        String resource = job.copyResourceStep(
+                WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/checkstyle-result.xml");
+        job.script.set("pipeline {\n"
+                + " agent{ label '" + agent.getName() + "' }\n"
+                + " stages { \n"
+                + "  stage('build') {\n"
+                + "   steps {\n"
+                + resource.replace("\\", "\\\\")
+                + "   }\n"
+                + "  }\n  stage('record issues') {\n"
+                + "   steps {\n"
+                + "    recordIssues qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]], tools: [checkStyle()]\n"
+                + "   }\n  }\n }\n}");
+        job.sandbox.check();
         job.save();
 
         Build build = buildJob(job);
@@ -177,11 +307,21 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 "-> found 1 issue (skipped 0 duplicates)",
                 "-> Some quality gates have been missed: overall result is FAILED");
 
-        reconfigureJobWithResource(job, "build_status_test/build_02/checkstyle-result.xml");
-
+        job.configure();
+        resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/checkstyle-result.xml");
+        job.script.set("pipeline {\n"
+                + " agent{ label '" + agent.getName() + "' }\n"
+                + " stages { \n"
+                + "  stage('build') {\n"
+                + "   steps {\n"
+                + resource.replace("\\", "\\\\")
+                + "   }\n"
+                + "  }\n  stage('record issues') {\n"
+                + "   steps {\n"
+                + "    recordIssues qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]], tools: [checkStyle()]\n"
+                + "   }\n  }\n }\n}");
+        job.save();
         jenkins.restart();
-        job.configure(() -> job.setLabelExpression(slave.getName()));
-        assertThat(slave.isOnline()).isTrue();
 
         build = buildJob(job);
         build.open();
@@ -189,13 +329,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 "-> found 1 file",
                 "-> found 3 issues (skipped 0 duplicates)",
                 "-> Some quality gates have been missed: overall result is FAILED");
+        build.open();
         assertThat(build.getConsole()).contains(
                 "[CheckStyle] Created analysis result for 3 issues (found 0 new issues, fixed 0 issues)");
-    }
-
-    @Test
-    public void should_record_without_qualitygate_reset_Pipeline() {
-        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
 
     }
 
