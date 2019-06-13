@@ -260,6 +260,30 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
+     * Tests the build overview page by running two builds that aggregate the three different tools into a single
+     * result. Checks the contents of the result summary.
+     */
+    @Test
+    public void should_fail_quality_gate_for_freestyle_project() {
+        // TODO:
+        //FreeStyleJob job = createFreeStyleJob("quality_gate/build_01");
+        DumbSlave dumbSlave = jenkins.slaves.create(DumbSlave.class);
+        FreeStyleJob job = createFreeStyleJobForDockerAgent(dumbSlave, "quality_gate/build_01");
+
+        IssuesRecorder issuesRecorder = job.addPublisher(IssuesRecorder.class, recorder -> {
+            recorder.setTool("CheckStyle");
+            recorder.setEnabledForFailure(true);
+        });
+        issuesRecorder.addQualityGateConfiguration(2, QualityGateType.TOTAL, false);
+        job.save();
+
+        Build build = buildJob(job).shouldBe(Result.FAILURE);
+        build.open();
+
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID)).hasQualityGateResult(QualityGateResult.SUCCESS);
+    }
+
+    /**
      * Verifies that the quality gate is evaluated and changes the result of the build to UNSTABLE or FAILED.
      */
     @Test
