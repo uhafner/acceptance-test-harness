@@ -7,5 +7,9 @@
            source="com.puppycrawl.tools.checkstyle.checks.javadoc.JavadocPackageCheck"/>
     <error line="2" severity="error" message="Missing package-info.java file."
            source="com.puppycrawl.tools.checkstyle.checks.javadoc.JavadocPackageCheck"/>
+    <error line="3" severity="error" message="Missing package-info.java file."
+           source="com.puppycrawl.tools.checkstyle.checks.javadoc.JavadocPackageCheck"/>
+    <error line="4" severity="error" message="Missing package-info.java file."
+           source="com.puppycrawl.tools.checkstyle.checks.javadoc.JavadocPackageCheck"/>
   </file>
 </checkstyle>
