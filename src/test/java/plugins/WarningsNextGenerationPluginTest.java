@@ -459,8 +459,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs a freestyle job that publishes checkstyle warnings. Verifies the content of the info and error
-     * log view.
+     * Runs a freestyle job that publishes checkstyle warnings. Verifies the content of the info and error log view.
      */
     @Test
     public void should_show_info_and_error_messages_in_freestyle_job() {
@@ -476,12 +475,57 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     @Test
+    public void should_reset_quality_gate_in_pipeline_project() {
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+        String resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle1.xml");
+        job.script.set("node {\n"
+                + resource.replace("\\", "\\\\")
+                + "recordIssues tool: checkStyle(pattern: '**/*.xml'), "
+                + "qualityGates: [[threshold: 3, type: 'TOTAL', unstable: true]], "
+                + "sourceCodeEncoding: 'UTF-8'"
+                + "}");
+        job.save();
+
+        Build build = buildJob(job).shouldBe(Result.UNSTABLE);
+
+        build.open();
+
+        AnalysisResult page = openAnalysisResult(build, CHECKSTYLE_ID);
+
+        IssuesTable issuesTable = page.openIssuesTable();
+        assertThat(issuesTable).hasSize(3);
+
+        //Create new job with more warnings
+        jenkins.restart();
+
+        job.open();
+        job.configure();
+        String resource2 = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle2.xml");
+        job.script.set("node {\n"
+                + resource.replace("\\", "\\\\")
+                + resource2.replace("\\", "\\\\")
+                + "recordIssues tool: checkStyle(pattern: '**/*.xml'), "
+                + "qualityGates:[[threshold: 3, type: 'TOTAL', unstable: false]], "
+                + "sourceCodeEncoding: 'UTF-8'"
+                + "}");
+        job.save();
+        build = buildJob(job).shouldBe(Result.FAILURE);
+
+        build.open();
+
+        page = openAnalysisResult(build, CHECKSTYLE_ID);
+
+        issuesTable = page.openIssuesTable();
+        assertThat(issuesTable).hasSize(6);
+    }
+
+    @Test
     public void should_reset_quality_gate_freestyle() {
         FreeStyleJob job = createFreeStyleJob("aggregation/checkstyle1.xml");
         job.addPublisher(IssuesRecorder.class, recorder -> {
             recorder.setTool("CheckStyle", "**/checkstyle1.xml");
             recorder.setSourceCodeEncoding("UTF-8");
-            recorder.addQualityGateConfiguration(3,QualityGateType.TOTAL, true);
+            recorder.addQualityGateConfiguration(3, QualityGateType.TOTAL, true);
         });
         job.save();
         Build build = buildJob(job).shouldBe(Result.UNSTABLE);
@@ -497,9 +541,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         jenkins.restart();
         reconfigureJobWithResource(job, "aggregation/checkstyle2.xml");
         job.editPublisher(IssuesRecorder.class, recorder -> {
-            recorder.setTool("CheckStyle", "**/checkstyle2.xml");
+            recorder.setTool("CheckStyle", "**/*.xml");
             recorder.setSourceCodeEncoding("UTF-8");
-            recorder.addQualityGateConfiguration(3,QualityGateType.TOTAL, true);
+            recorder.addQualityGateConfiguration(3, QualityGateType.TOTAL, true);
         });
         build = buildJob(job).shouldBe(Result.FAILURE);
 
@@ -508,13 +552,12 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         page = openAnalysisResult(build, CHECKSTYLE_ID);
 
         issuesTable = page.openIssuesTable();
-        assertThat(issuesTable).hasSize(4);
+        assertThat(issuesTable).hasSize(6);
 
     }
 
     /**
-     * Runs a pipeline that publishes checkstyle warnings. Verifies the content of the info and error
-     * log view.
+     * Runs a pipeline that publishes checkstyle warnings. Verifies the content of the info and error log view.
      */
     @Test
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
@@ -559,7 +602,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Creates and builds a maven job and verifies that all warnings are shown in the summary and details views.
      */
-    @Test @WithPlugins("maven-plugin")
+    @Test
+    @WithPlugins("maven-plugin")
     public void should_show_maven_warnings_in_maven_project() {
         MavenModuleSet job = createMavenProject();
         copyResourceFilesToWorkspace(job, SOURCE_VIEW_FOLDER + "pom.xml");
@@ -599,7 +643,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Verifies that package and namespace names are resolved.
      */
-    @Test @WithPlugins("maven-plugin")
+    @Test
+    @WithPlugins("maven-plugin")
     public void should_resolve_packages_and_namespaces() {
         MavenModuleSet job = createMavenProject();
         job.copyDir(job.resource(SOURCE_VIEW_FOLDER));
@@ -649,7 +694,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Verifies that warnings can be parsed on a agent as well.
      */
-    @Test @WithDocker @WithPlugins("ssh-slaves")
+    @Test
+    @WithDocker
+    @WithPlugins("ssh-slaves")
     @WithCredentials(credentialType = WithCredentials.SSH_USERNAME_PRIVATE_KEY, values = {CREDENTIALS_ID, CREDENTIALS_KEY})
     public void should_parse_warnings_on_agent() {
         DumbSlave dockerAgent = createDockerAgent();
