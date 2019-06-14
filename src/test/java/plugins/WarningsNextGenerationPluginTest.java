@@ -11,7 +11,10 @@ import java.util.LinkedHashMap;
 import java.util.Map.Entry;
 import java.util.function.Consumer;
 
+import javax.mail.FetchProfile.Item;
+
 import org.junit.Test;
+import org.openqa.selenium.WebDriver;
 
 import com.google.inject.Inject;
 
@@ -21,6 +24,7 @@ import org.jenkinsci.test.acceptance.junit.AbstractJUnitTest;
 import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
+import org.jenkinsci.test.acceptance.plugins.email_ext.EmailExtPublisher;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
@@ -477,21 +481,28 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     public void should_reset_quality_gate_in_pipeline_project() {
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+        job.script.set("node {\n"
+                + "recordIssues tool: checkStyle(pattern: '**/*.xml'), "
+                + "qualityGates: [[threshold: 3, type: 'NEW', unstable: true]], "
+                + "sourceCodeEncoding: 'UTF-8'"
+                + "}");
+        job.save();
+        buildJob(job).shouldBe(Result.SUCCESS);
+
+        job.open();
+        job.configure();
         String resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle1.xml");
         job.script.set("node {\n"
                 + resource.replace("\\", "\\\\")
                 + "recordIssues tool: checkStyle(pattern: '**/*.xml'), "
-                + "qualityGates: [[threshold: 3, type: 'TOTAL', unstable: true]], "
+                + "qualityGates: [[threshold: 3, type: 'NEW', unstable: true]], "
                 + "sourceCodeEncoding: 'UTF-8'"
                 + "}");
         job.save();
-
         Build build = buildJob(job).shouldBe(Result.UNSTABLE);
 
         build.open();
-
         AnalysisResult page = openAnalysisResult(build, CHECKSTYLE_ID);
-
         IssuesTable issuesTable = page.openIssuesTable();
         assertThat(issuesTable).hasSize(3);
 
@@ -505,57 +516,48 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 + resource.replace("\\", "\\\\")
                 + resource2.replace("\\", "\\\\")
                 + "recordIssues tool: checkStyle(pattern: '**/*.xml'), "
-                + "qualityGates:[[threshold: 3, type: 'TOTAL', unstable: false]], "
+                + "qualityGates:[[threshold: 3, type: 'NEW', unstable: true]], "
                 + "sourceCodeEncoding: 'UTF-8'"
                 + "}");
         job.save();
-        build = buildJob(job).shouldBe(Result.FAILURE);
+        build = buildJob(job).shouldBe(Result.UNSTABLE);
 
         build.open();
-
         page = openAnalysisResult(build, CHECKSTYLE_ID);
-
         issuesTable = page.openIssuesTable();
         assertThat(issuesTable).hasSize(6);
     }
 
     @Test
     public void should_reset_quality_gate_freestyle() {
-        FreeStyleJob job = createFreeStyleJob("aggregation/checkstyle1.xml");
+        FreeStyleJob job = createFreeStyleJob();
         job.addPublisher(IssuesRecorder.class, recorder -> {
-            recorder.setTool("CheckStyle", "**/checkstyle1.xml");
+            recorder.setTool("CheckStyle", "**/*.xml");
             recorder.setSourceCodeEncoding("UTF-8");
-            recorder.addQualityGateConfiguration(3, QualityGateType.TOTAL, true);
+            recorder.addQualityGateConfiguration(3, QualityGateType.NEW, true);
         });
         job.save();
+        buildJob(job).shouldBe(Result.SUCCESS);
+
+        reconfigureJobWithResource(job, "aggregation/checkstyle1.xml");
         Build build = buildJob(job).shouldBe(Result.UNSTABLE);
 
         build.open();
-
         AnalysisResult page = openAnalysisResult(build, CHECKSTYLE_ID);
-
         IssuesTable issuesTable = page.openIssuesTable();
         assertThat(issuesTable).hasSize(3);
 
         //Create new job with more warnings
         jenkins.restart();
         reconfigureJobWithResource(job, "aggregation/checkstyle2.xml");
-        job.editPublisher(IssuesRecorder.class, recorder -> {
-            recorder.setTool("CheckStyle", "**/*.xml");
-            recorder.setSourceCodeEncoding("UTF-8");
-            recorder.addQualityGateConfiguration(3, QualityGateType.TOTAL, true);
-        });
-        build = buildJob(job).shouldBe(Result.FAILURE);
+        build = buildJob(job).shouldBe(Result.UNSTABLE);
 
         build.open();
-
         page = openAnalysisResult(build, CHECKSTYLE_ID);
-
         issuesTable = page.openIssuesTable();
         assertThat(issuesTable).hasSize(6);
-
     }
-
+    
     /**
      * Runs a pipeline that publishes checkstyle warnings. Verifies the content of the info and error log view.
      */
