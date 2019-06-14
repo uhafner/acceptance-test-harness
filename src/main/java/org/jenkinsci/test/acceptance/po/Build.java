@@ -1,6 +1,5 @@
 package org.jenkinsci.test.acceptance.po;
 
-import java.io.IOException;
 import java.net.URL;
 import java.util.LinkedList;
 import java.util.List;
@@ -8,20 +7,20 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
-import org.apache.commons.io.IOUtils;
 import org.hamcrest.Description;
-import org.jenkinsci.test.acceptance.Matcher;
-import org.jenkinsci.test.acceptance.Matchers;
-import org.jenkinsci.test.acceptance.junit.Wait;
-import com.fasterxml.jackson.databind.JsonNode;
 import org.openqa.selenium.Alert;
 import org.openqa.selenium.By;
 import org.openqa.selenium.WebElement;
 
+import com.fasterxml.jackson.databind.JsonNode;
+
+import org.jenkinsci.test.acceptance.Matcher;
+import org.jenkinsci.test.acceptance.Matchers;
+import org.jenkinsci.test.acceptance.junit.Wait;
+
 import static org.hamcrest.CoreMatchers.*;
 import static org.hamcrest.MatcherAssert.*;
-import static org.jenkinsci.test.acceptance.Matchers.pageObjectDoesNotExist;
-import static org.jenkinsci.test.acceptance.Matchers.pageObjectExists;
+import static org.jenkinsci.test.acceptance.Matchers.*;
 
 /**
  * @author Kohsuke Kawaguchi
@@ -78,7 +77,7 @@ public class Build extends ContainerPageObject {
                     public Boolean call() {
                         return hasStarted();
                     }
-        });
+                });
         return this;
     }
 
@@ -91,7 +90,8 @@ public class Build extends ContainerPageObject {
             getJson();
             // we have json. Build has started.
             return true;
-        } catch (Exception e) {
+        }
+        catch (Exception e) {
             return false;
         }
     }
@@ -120,7 +120,7 @@ public class Build extends ContainerPageObject {
                     public String diagnose(Throwable lastException, String message) {
                         return "Console output:\n" + Build.this.getConsole() + "\n";
                     }
-        });
+                });
         return this;
     }
 
@@ -170,7 +170,8 @@ public class Build extends ContainerPageObject {
     }
 
     /**
-     * @deprecated Use @link{@link org.hamcrest.Matchers#not}({@link org.jenkinsci.test.acceptance.Matchers#containsRegexp}) instead.
+     * @deprecated Use @link{@link org.hamcrest.Matchers#not}({@link org.jenkinsci.test.acceptance.Matchers#containsRegexp})
+     *         instead.
      */
     @Deprecated
     public Build shouldNotContainsConsoleOutput(String fragment) {
@@ -206,7 +207,7 @@ public class Build extends ContainerPageObject {
     public List<Artifact> getArtifacts() {
         JsonNode data = getJson("tree=artifacts[*]").get("artifacts");
         List<Artifact> list = new LinkedList<>();
-        for (JsonNode e: data) {
+        for (JsonNode e : data) {
             list.add(getArtifact(
                     e.get("relativePath").asText()
             ));
@@ -285,7 +286,8 @@ public class Build extends ContainerPageObject {
         open();
         if (keep) {
             clickButton("Keep this build forever");
-        } else {
+        }
+        else {
             clickButton("Don't keep this build forever");
         }
     }
@@ -324,12 +326,42 @@ public class Build extends ContainerPageObject {
         }
     }
 
+    /**
+     * Returns if the button to reset the quality gate ist visible.
+     *
+     * @param toolName
+     *         The name of the tool which you want to reset the quality gate.
+     *
+     * @return True if the button is visible, false otherwise.
+     */
+    public boolean isQualityGateResetButtonVisible(final String toolName) {
+        WebElement webElement = getElement(by.href(toolName + "/resetReference"));
+
+        return webElement != null;
+    }
+
+    /**
+     * Resets the quality gate by clicking the reset button.
+     *
+     * @param toolName
+     *         The name of the tool which you want to reset the quality gate.
+     */
+    public void resetQualityGate(final String toolName) {
+        find(by.href(toolName + "/resetReference")).click();
+    }
+
     @Override
     public boolean equals(Object other) {
-        if (other == null) return false;
-        if (this == other) return true;
+        if (other == null) {
+            return false;
+        }
+        if (this == other) {
+            return true;
+        }
 
-        if (!(other instanceof Build)) return false;
+        if (!(other instanceof Build)) {
+            return false;
+        }
 
         Build rhs = (Build) other;
         // There is a problem comparing jobs for equality as there is no nice
