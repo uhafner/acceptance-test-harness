@@ -21,8 +21,10 @@ import org.jenkinsci.test.acceptance.junit.AbstractJUnitTest;
 import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
+import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
+import org.jenkinsci.test.acceptance.plugins.mock_security_realm.MockSecurityRealm;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AbstractNonDetailsIssuesTableRow;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AnalysisResult;
@@ -45,6 +47,7 @@ import org.jenkinsci.test.acceptance.po.Build;
 import org.jenkinsci.test.acceptance.po.Build.Result;
 import org.jenkinsci.test.acceptance.po.DumbSlave;
 import org.jenkinsci.test.acceptance.po.FreeStyleJob;
+import org.jenkinsci.test.acceptance.po.GlobalSecurityConfig;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
@@ -103,6 +106,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      */
     private static final String CREDENTIALS_ID = "git";
     private static final String CREDENTIALS_KEY = "/org/jenkinsci/test/acceptance/docker/fixtures/GitContainer/unsafe";
+    private static final String ADMIN_USERNAME = "admin";
+    private static final String DEVELOPER_USERNAME = "developer";
+    private static final String READ_ONLY_USERNAME = "readonly";
 
     @Inject
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
@@ -652,6 +658,41 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(result).hasTotal(6);
     }
 
+    @Test
+    @WithPlugins({"mock-security-realm", "matrix-auth@2.3"})
+    public void should_not_display_reset_quality_gate_as_readonly_user() {
+        FreeStyleJob job = createFreeStyleJob();
+        copyResourceFilesToWorkspace(job, WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle1.xml");
+        job.addPublisher(IssuesRecorder.class, recorder -> {
+            recorder.setTool("CheckStyle", "**/*.xml");
+            recorder.setSourceCodeEncoding("UTF-8");
+            recorder.addQualityGateConfiguration(3, QualityGateType.TOTAL, true);
+        });
+        job.save();
+
+        configureSecurity(ADMIN_USERNAME, DEVELOPER_USERNAME, READ_ONLY_USERNAME);
+        jenkins.login().doLogin(ADMIN_USERNAME);
+
+        Build build = buildJob(job).shouldBe(Result.UNSTABLE);
+
+        build.open();
+        AnalysisResult result = openAnalysisResult(build, CHECKSTYLE_ID);
+        assertThat(result).hasTotal(3);
+
+        build.open();
+        assertThat(build.isQualityGateResetButtonVisible(CHECKSTYLE_ID)).isTrue();
+
+        jenkins.logout();
+        jenkins.login().doLogin(DEVELOPER_USERNAME);
+        build.open();
+        assertThat(build.isQualityGateResetButtonVisible(CHECKSTYLE_ID)).isTrue();
+
+        jenkins.logout();
+        jenkins.login().doLogin(READ_ONLY_USERNAME);
+        build.open();
+        assertThat(build.isQualityGateResetButtonVisible(CHECKSTYLE_ID)).isFalse();
+    }
+
     /**
      * Runs a pipeline that publishes checkstyle warnings. Verifies the content of the info and error log view.
      */
@@ -998,5 +1039,18 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         }
         return Paths.get(resource.toURI());
     }
+
+    private void configureSecurity(final String admin, final String developer, final String readOnly) {
+        GlobalSecurityConfig security = new GlobalSecurityConfig(jenkins);
+        security.configure(() -> {
+            MockSecurityRealm realm = security.useRealm(MockSecurityRealm.class);
+            realm.configure(admin, developer, readOnly);
+            MatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(MatrixAuthorizationStrategy.class);
+            mas.addUser(admin).admin();
+            mas.addUser(developer).developer();
+            mas.addUser(readOnly).readOnly();
+        });
+    }
+
 }
 
