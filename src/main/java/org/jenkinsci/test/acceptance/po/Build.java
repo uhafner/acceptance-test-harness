@@ -10,6 +10,7 @@ import java.util.regex.Pattern;
 import org.hamcrest.Description;
 import org.openqa.selenium.Alert;
 import org.openqa.selenium.By;
+import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.WebElement;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -335,9 +336,13 @@ public class Build extends ContainerPageObject {
      * @return True if the button is visible, false otherwise.
      */
     public boolean isQualityGateResetButtonVisible(final String toolName) {
-        WebElement webElement = getElement(by.href(toolName + "/resetReference"));
-
-        return webElement != null;
+        try {
+            WebElement webElement = find(by.id(toolName + "-resetReference"));
+            return webElement != null;
+        }
+        catch (NoSuchElementException e) {
+            return false;
+        }
     }
 
     /**
@@ -347,7 +352,7 @@ public class Build extends ContainerPageObject {
      *         The name of the tool which you want to reset the quality gate.
      */
     public void resetQualityGate(final String toolName) {
-        find(by.href(toolName + "/resetReference")).click();
+        find(by.id(toolName + "-resetReference")).click();
     }
 
     @Override
