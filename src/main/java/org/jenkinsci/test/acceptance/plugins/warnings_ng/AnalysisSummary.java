@@ -228,6 +228,20 @@ public class AnalysisSummary extends PageObject {
     }
 
     /**
+     * Returns a clickable WebElement (button), by it's id;
+     *
+     * @return WebElement that belongs to id-resetReference id
+     */
+    public WebElement getResetQualityGateButton() {
+        for (WebElement result : results) {
+            if (result.getText().contains("Quality gate")) {
+                return result.findElement(by.id(id + "-resetReference"));
+            }
+        }
+        return null;
+    }
+
+    /**
      * Returns a clickable WebElement (a-tag), by a part of the elements text.
      *
      * @param namePart

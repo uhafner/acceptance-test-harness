@@ -146,6 +146,12 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 3 warnings");
+        assertThat(pmd.getResetQualityGateButton()).isNotNull();
+        pmd.getResetQualityGateButton().click();
+
+        //create new pmd instance to check if button is gone now
+        AnalysisSummary pmd2 = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd2.getResetQualityGateButton()).isNull();
 
         jenkins.restart();
         build = job.getLastBuild().shouldBeUnstable();
