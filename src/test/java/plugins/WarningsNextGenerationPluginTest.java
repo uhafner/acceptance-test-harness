@@ -15,6 +15,9 @@ import java.util.regex.Pattern;
 import javax.mail.MessagingException;
 
 import org.junit.Test;
+import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.WebDriver;
+import org.openqa.selenium.WebElement;
 
 import com.google.inject.Inject;
 
@@ -132,7 +135,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      */
     @Test
     public void shouldReachQualityGateRebuildReachAgain() {
-        FreeStyleJob job = createFreeStyleJob("build_status_test/build_01/pmd.xml");
+        FreeStyleJob job = createFreeStyleJob("build_status_test/build_02/pmd.xml");
         IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class, r -> {
             r.addTool("PMD");
             r.setEnabledForFailure(true);
@@ -145,27 +148,43 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 3 warnings");
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
         assertThat(pmd.getResetQualityGateButton()).isNotNull();
+        assertThat(pmd.getResetQualityGateButton().isDisplayed()).isTrue();
+
         pmd.getResetQualityGateButton().click();
 
-        //create new pmd instance to check if button is gone now
-        AnalysisSummary pmd2 = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd2.getResetQualityGateButton()).isNull();
+        //assertThat(build.getPageSource().contains("pmd-resetReference")).isFalse();
+
+        build = job.getLastBuild().shouldBeUnstable();
+        build.open();
+        pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getResetQualityGateButton()).isNull();
+
+        //assertThat(driver.getPageSource().contains("pmd-resetReference")).isFalse();
 
         jenkins.restart();
         build = job.getLastBuild().shouldBeUnstable();
 
-        //pmd = new AnalysisSummary(build, PMD_ID);
-        //assertThat(pmd).isDisplayed();
-        //assertThat(pmd).hasTitleText("PMD: 3 warnings");
+        build.open();
 
+        pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getResetQualityGateButton()).isNull();
+
+        reconfigureJobWithResource(job, "build_status_test/build_01/pmd.xml");
         build = buildJob(job).shouldBeUnstable();
         build.open();
 
         pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 3 warnings");
+        assertThat(pmd.getResetQualityGateButton()).isNotNull();
+        assertThat(pmd.getResetQualityGateButton().isDisplayed()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
     }
 
     /**

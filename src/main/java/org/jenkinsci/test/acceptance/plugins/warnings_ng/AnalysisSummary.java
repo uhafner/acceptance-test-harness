@@ -235,7 +235,13 @@ public class AnalysisSummary extends PageObject {
     public WebElement getResetQualityGateButton() {
         for (WebElement result : results) {
             if (result.getText().contains("Quality gate")) {
-                return result.findElement(by.id(id + "-resetReference"));
+                try {
+                    return result.findElement(by.id(id + "-resetReference"));
+                }
+                catch (org.openqa.selenium.NoSuchElementException e) {
+                    e.printStackTrace();
+                    return null;
+                }
             }
         }
         return null;
@@ -249,7 +255,7 @@ public class AnalysisSummary extends PageObject {
      *
      * @return WebElement that belongs to the name part
      */
-    private Optional<WebElement> findClickableResultEntryByNamePart(final String namePart) {
+    public Optional<WebElement> findClickableResultEntryByNamePart(final String namePart) {
         for (WebElement el : results) {
             if (el.getText().contains(namePart)) {
                 return Optional.of(el.findElement(by.tagName("a")));
