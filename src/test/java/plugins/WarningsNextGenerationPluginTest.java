@@ -98,8 +98,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Inject
     private MailService mail;
 
+    /**
+     *
+     */
     @Test
-    public void mailServiceTest() throws MessagingException, IOException {
+    public void mailServiceTest() {
         mail.setup(jenkins);
 
         FreeStyleJob job = jenkins.jobs.create();
@@ -113,9 +116,50 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         Build b = job.startBuild().shouldFail();
 
-        mail.assertMail(Pattern.compile("^Modified "),
-                "dev@example.com",
-                Pattern.compile("\nwith amendment$"));
+        try {
+            mail.assertMail(Pattern.compile("^Modified "),
+                    "dev@example.com",
+                    Pattern.compile("\nwith amendment$"));
+        }
+        catch (MessagingException | IOException e) {
+            throw new AssertionError("Error while assert mail.", e);
+        }
+    }
+
+    /**
+     * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
+     * rebuild will reach the quality gate again.
+     */
+    @Test
+    public void shouldReachQualityGateRebuildReachAgain() {
+        FreeStyleJob job = createFreeStyleJob("build_status_test/build_01/pmd.xml");
+        IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class, r -> {
+            r.addTool("PMD");
+            r.setEnabledForFailure(true);
+        });
+        recorder.addQualityGateConfiguration(2, QualityGateType.TOTAL, true);
+        job.save();
+
+        Build build = buildJob(job).shouldBeUnstable();
+        build.open();
+
+        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 3 warnings");
+
+        jenkins.restart();
+        build = job.getLastBuild().shouldBeUnstable();
+
+        //pmd = new AnalysisSummary(build, PMD_ID);
+        //assertThat(pmd).isDisplayed();
+        //assertThat(pmd).hasTitleText("PMD: 3 warnings");
+
+        build = buildJob(job).shouldBeUnstable();
+        build.open();
+
+        pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 3 warnings");
     }
 
     /**
@@ -136,7 +180,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
 
     /**
-     * Runs a pipeline with checkstyle and pmd. Verifies the expansion of tokens with the token-macro plugin.
+     * e Runs a pipeline with checkstyle and pmd. Verifies the expansion of tokens with the token-macro plugin.
      */
     @Test
     @WithPlugins({"token-macro", "workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
