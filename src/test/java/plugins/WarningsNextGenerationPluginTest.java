@@ -211,12 +211,12 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
     }
 
-    private WorkflowJob setPipelineScript(WorkflowJob job, final String resource, final boolean qualityGate) {
+    private WorkflowJob setPipelineScript(WorkflowJob job, final String resource, final boolean qualityGate, final String agentName) {
         if (qualityGate) {
             job.configure();
         }
         String pmd = job.copyResourceStep(resource);
-        String pipeline = "node {\n";
+        String pipeline = "node('" + agentName + "') {\n";
         if (qualityGate) {
             pipeline += pmd.replace("\\", "\\\\");
         }
@@ -253,16 +253,15 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(agent.isOnline()).isTrue();
 
+        final String agentName = agent.getName();
+
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
-        job.setLabelExpression(agent.getName());
-        job.script.set("node {\nrecordIssues tool: pmdParser(pattern: '**/pmd*')\n }");
-        job.sandbox.check();
-        job.save();
+        setPipelineScript(job, "", false, agentName);
 
         Build build = buildJob(job).shouldSucceed();
         build.open();
 
-        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/pmd.xml", true);
+        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/pmd.xml", true, agentName);
         build = buildJob(job).shouldBeUnstable();
         build.open();
 
@@ -294,7 +293,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
-        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true);
+        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true, agentName);
         build = buildJob(job).shouldSucceed();
         build.open();
 
