@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map.Entry;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 import java.util.regex.Pattern;
 
@@ -54,6 +55,8 @@ import org.jenkinsci.test.acceptance.po.FreeStyleJob;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
+import org.jenkinsci.test.acceptance.slave.LocalSlaveController;
+import org.jenkinsci.test.acceptance.slave.SlaveController;
 import org.jenkinsci.test.acceptance.utils.mail.MailService;
 
 import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
@@ -134,9 +137,14 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      */
     @Test
     public void shouldFreeStyleJobReachQualityGateRebuildReachAgain() {
-        //TODO Test auf dem agent laufen lassen
-        /*SlaveController controller = new LocalSlaveController();
-        Slave agent = controller.install(jenkins).get();
+        SlaveController controller = new LocalSlaveController();
+        Slave agent;
+        try {
+            agent = controller.install(jenkins).get();
+        }
+        catch (InterruptedException | ExecutionException e) {
+            throw new AssertionError("Error while getting slave.", e);
+        }
         agent.configure();
         agent.setLabels("agent");
         agent.save();
@@ -144,10 +152,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(agent.isOnline()).isTrue();
 
-        FreeStyleJob job = createFreeStyleJobForAgent(agent.getName(), "issue_filter/checkstyle-result.xml");
-        */
-
         FreeStyleJob job = createFreeStyleJob();
+        job.configure();
+        job.setLabelExpression(agent.getName());
+
         IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class, r -> {
             r.addTool("PMD");
             r.setEnabledForFailure(true);
