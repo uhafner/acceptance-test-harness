@@ -238,8 +238,26 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
     public void shouldPipelineJobReachQualityGateRebuildReachAgain() {
+        SlaveController controller = new LocalSlaveController();
+        Slave agent;
+        try {
+            agent = controller.install(jenkins).get();
+        }
+        catch (InterruptedException | ExecutionException e) {
+            throw new AssertionError("Error while getting slave.", e);
+        }
+        agent.configure();
+        agent.setLabels("agent");
+        agent.save();
+        agent.waitUntilOnline();
+
+        assertThat(agent.isOnline()).isTrue();
+
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
-        job = setPipelineScript(job, "", false);
+        job.setLabelExpression(agent.getName());
+        job.script.set("node {\nrecordIssues tool: pmdParser(pattern: '**/pmd*')\n }");
+        job.sandbox.check();
+        job.save();
 
         Build build = buildJob(job).shouldSucceed();
         build.open();
