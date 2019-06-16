@@ -15,9 +15,8 @@ import java.util.regex.Pattern;
 import javax.mail.MessagingException;
 
 import org.junit.Test;
-import org.openqa.selenium.JavascriptExecutor;
-import org.openqa.selenium.WebDriver;
-import org.openqa.selenium.WebElement;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
 
 import com.google.inject.Inject;
 
@@ -134,57 +133,149 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * rebuild will reach the quality gate again.
      */
     @Test
-    public void shouldReachQualityGateRebuildReachAgain() {
-        FreeStyleJob job = createFreeStyleJob("build_status_test/build_02/pmd.xml");
+    public void shouldFreeStyleJobReachQualityGateRebuildReachAgain() {
+        //TODO Test auf dem agent laufen lassen
+        /*SlaveController controller = new LocalSlaveController();
+        Slave agent = controller.install(jenkins).get();
+        agent.configure();
+        agent.setLabels("agent");
+        agent.save();
+        agent.waitUntilOnline();
+
+        assertThat(agent.isOnline()).isTrue();
+
+        FreeStyleJob job = createFreeStyleJobForAgent(agent.getName(), "issue_filter/checkstyle-result.xml");
+        */
+
+        FreeStyleJob job = createFreeStyleJob();
         IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class, r -> {
             r.addTool("PMD");
             r.setEnabledForFailure(true);
         });
-        recorder.addQualityGateConfiguration(2, QualityGateType.TOTAL, true);
+        recorder.addQualityGateConfiguration(2, QualityGateType.NEW, true);
         job.save();
 
-        Build build = buildJob(job).shouldBeUnstable();
+        Build build = buildJob(job).shouldSucceed();
+        build.open();
+
+        reconfigureJobWithResource(job, "build_status_test/build_02/pmd.xml");
+        build = buildJob(job).shouldBeUnstable();
         build.open();
 
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 2 warnings");
         assertThat(pmd.getResetQualityGateButton()).isNotNull();
-        assertThat(pmd.getResetQualityGateButton().isDisplayed()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
         pmd.getResetQualityGateButton().click();
 
-        //assertThat(build.getPageSource().contains("pmd-resetReference")).isFalse();
+        new WebDriverWait(driver, 5).until(ExpectedConditions.invisibilityOf(pmd.getResetQualityGateButton()));
 
-        build = job.getLastBuild().shouldBeUnstable();
-        build.open();
-        pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 2 warnings");
         assertThat(pmd.getResetQualityGateButton()).isNull();
-
-        //assertThat(driver.getPageSource().contains("pmd-resetReference")).isFalse();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
         jenkins.restart();
         build = job.getLastBuild().shouldBeUnstable();
-
         build.open();
 
         pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 2 warnings");
         assertThat(pmd.getResetQualityGateButton()).isNull();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
         reconfigureJobWithResource(job, "build_status_test/build_01/pmd.xml");
-        build = buildJob(job).shouldBeUnstable();
+
+        build = buildJob(job).shouldSucceed();
         build.open();
 
         pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 3 warnings");
-        assertThat(pmd.getResetQualityGateButton()).isNotNull();
-        assertThat(pmd.getResetQualityGateButton().isDisplayed()).isTrue();
+        assertThat(pmd.getResetQualityGateButton()).isNull();
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+    }
+
+    private WorkflowJob setPipelineScript(WorkflowJob job, final String resource, final boolean qualityGate) {
+        String pmd = job.copyResourceStep(resource);
+        String pipeline = "node {\n"
+                + pmd.replace("\\", "\\\\")
+                + "recordIssues tool: pmdParser(pattern: '**/pmd*')";
+        if (qualityGate) {
+            pipeline += ", qualityGates: [[threshold: 2, type: 'NEW', unstable: true]]";
+        }
+        pipeline += "\n}";
+        job.script.set(pipeline);
+        job.sandbox.check();
+        job.save();
+        return job;
+    }
+
+    /**
+     * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
+     * rebuild will reach the quality gate again.
+     */
+    @Test
+    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
+    public void shouldPipelineJobReachQualityGateRebuildReachAgain() {
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/pmd.xml", false);
+
+        Build build = buildJob(job).shouldSucceed();
+        build.open();
+
+        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/pmd.xml", true);
+        build = buildJob(job).shouldBeUnstable();
+        build.open();
+
+        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getResetQualityGateButton()).isNotNull();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        pmd.getResetQualityGateButton().click();
+
+        new WebDriverWait(driver, 5).until(ExpectedConditions.invisibilityOf(pmd.getResetQualityGateButton()));
+
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getResetQualityGateButton()).isNull();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        jenkins.restart();
+        build = job.getLastBuild().shouldBeUnstable();
+        build.open();
+
+        pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getResetQualityGateButton()).isNull();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true);
+        build = buildJob(job).shouldBeUnstable();
+        build.open();
+
+        build = buildJob(job).shouldSucceed();
+        build.open();
+
+        pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 3 warnings");
+        assertThat(pmd.getResetQualityGateButton()).isNull();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
     }
 
     /**
