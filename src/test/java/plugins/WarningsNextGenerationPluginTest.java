@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map.Entry;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
 import org.junit.Test;
@@ -51,6 +52,8 @@ import org.jenkinsci.test.acceptance.po.GlobalSecurityConfig;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
+import org.jenkinsci.test.acceptance.slave.LocalSlaveController;
+import org.jenkinsci.test.acceptance.slave.SlaveController;
 
 import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
 
@@ -483,8 +486,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     public void should_trigger_quality_gate_in_pipeline_project() {
         //first build (successful)
+        Slave agent = createAgent();
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
         job.script.set("node {\n"
+                + "label '" + agent.getName() + "'\n"
                 + "recordIssues tool: checkStyle(pattern: '**/*.xml'), "
                 + "qualityGates: [[threshold: 3, type: 'NEW', unstable: true]], "
                 + "sourceCodeEncoding: 'UTF-8'"
@@ -497,6 +502,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.configure();
         String resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle1.xml");
         job.script.set("node {\n"
+                + "label '" + agent.getName() + "'\n"
                 + resource.replace("\\", "\\\\")
                 + "recordIssues tool: checkStyle(pattern: '**/*.xml'), "
                 + "qualityGates: [[threshold: 3, type: 'NEW', unstable: true]], "
@@ -514,6 +520,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.configure();
         String resource2 = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle2.xml");
         job.script.set("node {\n"
+                + "label '" + agent.getName() + "'\n"
                 + resource.replace("\\", "\\\\")
                 + resource2.replace("\\", "\\\\")
                 + "recordIssues tool: checkStyle(pattern: '**/*.xml'), "
@@ -534,8 +541,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     public void should_reset_quality_gate_in_pipeline_project() {
         //first build (successful)
+        Slave agent = createAgent();
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
         job.script.set("node {\n"
+                + "label '" + agent.getName() + "'\n"
                 + "recordIssues tool: checkStyle(pattern: '**/*.xml'), "
                 + "qualityGates: [[threshold: 3, type: 'NEW', unstable: true]], "
                 + "sourceCodeEncoding: 'UTF-8'"
@@ -548,6 +557,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.configure();
         String resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle1.xml");
         job.script.set("node {\n"
+                + "label '" + agent.getName() + "'\n"
                 + resource.replace("\\", "\\\\")
                 + "recordIssues tool: checkStyle(pattern: '**/*.xml'), "
                 + "qualityGates: [[threshold: 3, type: 'NEW', unstable: true]], "
@@ -571,6 +581,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.configure();
         String resource2 = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle2.xml");
         job.script.set("node {\n"
+                + "label '" + agent.getName() + "'\n"
                 + resource.replace("\\", "\\\\")
                 + resource2.replace("\\", "\\\\")
                 + "recordIssues tool: checkStyle(pattern: '**/*.xml'), "
@@ -591,7 +602,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     public void should_trigger_quality_gate_freestyle() {
         //first build (successful)
-        FreeStyleJob job = createFreeStyleJob();
+        Slave agent = createAgent();
+        FreeStyleJob job = createFreeStyleJobForAgent(agent);
+
         job.addPublisher(IssuesRecorder.class, recorder -> {
             recorder.setTool("CheckStyle", "**/*.xml");
             recorder.setSourceCodeEncoding("UTF-8");
@@ -623,7 +636,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     public void should_reset_quality_gate_freestyle() {
         //first build (successful)
-        FreeStyleJob job = createFreeStyleJob();
+        Slave agent = createAgent();
+        FreeStyleJob job = createFreeStyleJobForAgent(agent);
+
         job.addPublisher(IssuesRecorder.class, recorder -> {
             recorder.setTool("CheckStyle", "**/*.xml");
             recorder.setSourceCodeEncoding("UTF-8");
@@ -661,7 +676,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     @WithPlugins({"mock-security-realm", "matrix-auth@2.3"})
     public void should_not_display_reset_quality_gate_as_readonly_user() {
-        FreeStyleJob job = createFreeStyleJob();
+        Slave agent = createAgent();
+        FreeStyleJob job = createFreeStyleJobForAgent(agent);
         copyResourceFilesToWorkspace(job, WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle1.xml");
         job.addPublisher(IssuesRecorder.class, recorder -> {
             recorder.setTool("CheckStyle", "**/*.xml");
@@ -837,7 +853,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @WithCredentials(credentialType = WithCredentials.SSH_USERNAME_PRIVATE_KEY, values = {CREDENTIALS_ID, CREDENTIALS_KEY})
     public void should_parse_warnings_on_agent() {
         DumbSlave dockerAgent = createDockerAgent();
-        FreeStyleJob job = createFreeStyleJobForDockerAgent(dockerAgent, "issue_filter/checkstyle-result.xml");
+        FreeStyleJob job = createFreeStyleJobForAgent(dockerAgent, "issue_filter/checkstyle-result.xml");
         job.addPublisher(IssuesRecorder.class, recorder -> {
             recorder.setTool("CheckStyle", "**/checkstyle-result.xml");
         });
@@ -854,10 +870,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(summary).hasReferenceBuild(0);
     }
 
-    private FreeStyleJob createFreeStyleJobForDockerAgent(final Slave dockerAgent, final String... resourcesToCopy) {
+    private FreeStyleJob createFreeStyleJobForAgent(final Slave agent, final String... resourcesToCopy) {
         FreeStyleJob job = createFreeStyleJob(resourcesToCopy);
         job.configure();
-        job.setLabelExpression(dockerAgent.getName());
+        job.setLabelExpression(agent.getName());
         return job;
     }
 
@@ -896,6 +912,25 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(agent.isOnline()).isTrue();
 
+        return agent;
+    }
+
+    private Slave createAgent() {
+        SlaveController controller = new LocalSlaveController();
+        Slave agent;
+        try {
+            agent = controller.install(jenkins).get();
+        }
+        catch (InterruptedException | ExecutionException e) {
+            throw new IllegalStateException("Unexpected exception: ", e);
+        }
+
+        agent.configure();
+        agent.setLabels("agent");
+        agent.save();
+        agent.waitUntilOnline();
+
+        assertThat(agent.isOnline()).isTrue();
         return agent;
     }
 
