@@ -204,10 +204,15 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     private WorkflowJob setPipelineScript(WorkflowJob job, final String resource, final boolean qualityGate) {
+        if (qualityGate) {
+            job.configure();
+        }
         String pmd = job.copyResourceStep(resource);
-        String pipeline = "node {\n"
-                + pmd.replace("\\", "\\\\")
-                + "recordIssues tool: pmdParser(pattern: '**/pmd*')";
+        String pipeline = "node {\n";
+        if (qualityGate) {
+            pipeline += pmd.replace("\\", "\\\\");
+        }
+        pipeline += "recordIssues tool: pmdParser(pattern: '**/pmd*')";
         if (qualityGate) {
             pipeline += ", qualityGates: [[threshold: 2, type: 'NEW', unstable: true]]";
         }
@@ -226,7 +231,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
     public void shouldPipelineJobReachQualityGateRebuildReachAgain() {
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
-        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/pmd.xml", false);
+        job = setPipelineScript(job, "", false);
 
         Build build = buildJob(job).shouldSucceed();
         build.open();
@@ -264,9 +269,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
         job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true);
-        build = buildJob(job).shouldBeUnstable();
-        build.open();
-
         build = buildJob(job).shouldSucceed();
         build.open();
 
