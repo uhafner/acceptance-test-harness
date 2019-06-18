@@ -276,9 +276,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     public void should_fail_quality_gate_for_freestyle_project() {
         // TODO: 3 Builds (no warning initial)
-        //DumbSlave slave = jenkins.slaves.create(DumbSlave.class);
-        //DumbSlave slave = createDockerAgent();
-        FreeStyleJob job = createFreeStyleJob("quality_gate/build_01");
+        DumbSlave slave = jenkins.slaves.create(DumbSlave.class);
+        FreeStyleJob job = createFreeStyleJobForDockerAgent(slave,"quality_gate/build_01");
 
         IssuesRecorder issuesRecorder = job.addPublisher(IssuesRecorder.class, recorder -> {
             recorder.setTool("CheckStyle");
@@ -291,11 +290,13 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         build.open();
 
         assertThat(new AnalysisSummary(build, CHECKSTYLE_ID)).hasQualityGateResult(QualityGateResult.SUCCESS);
-        jenkins.restart();
+        /*jenkins.restart();
 
+        job.open();
+        job.copyResource("quality_gate/build_02");
         build = buildJob(job).shouldBe(Result.SUCCESS);
         build.open();
-        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID)).hasQualityGateResult(QualityGateResult.SUCCESS);
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID)).hasQualityGateResult(QualityGateResult.SUCCESS);*/
     }
 
     /**

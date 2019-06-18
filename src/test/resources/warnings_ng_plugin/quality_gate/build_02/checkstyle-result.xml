@@ -11,5 +11,11 @@
            source="com.puppycrawl.tools.checkstyle.checks.javadoc.JavadocPackageCheck"/>
     <error line="4" severity="error" message="Missing package-info.java file."
            source="com.puppycrawl.tools.checkstyle.checks.javadoc.JavadocPackageCheck"/>
+    <error line="5" severity="error" message="Missing package-info.java file."
+           source="com.puppycrawl.tools.checkstyle.checks.javadoc.JavadocPackageCheck"/>
+    <error line="6" severity="error" message="Missing package-info.java file."
+           source="com.puppycrawl.tools.checkstyle.checks.javadoc.JavadocPackageCheck"/>
+    <error line="7" severity="error" message="Missing package-info.java file."
+           source="com.puppycrawl.tools.checkstyle.checks.javadoc.JavadocPackageCheck"/>
   </file>
 </checkstyle>
