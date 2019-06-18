@@ -8,13 +8,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map.Entry;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
-import java.util.regex.Pattern;
 
 import javax.mail.MessagingException;
-import javax.mail.internet.MimeMessage;
 
 import org.junit.Test;
 
@@ -54,6 +52,8 @@ import org.jenkinsci.test.acceptance.po.FreeStyleJob;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
+import org.jenkinsci.test.acceptance.slave.LocalSlaveController;
+import org.jenkinsci.test.acceptance.slave.SlaveController;
 import org.jenkinsci.test.acceptance.utils.mail.MailService;
 
 import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
@@ -276,27 +276,42 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     public void should_fail_quality_gate_for_freestyle_project() {
         // TODO: 3 Builds (no warning initial)
-        DumbSlave slave = jenkins.slaves.create(DumbSlave.class);
-        FreeStyleJob job = createFreeStyleJobForDockerAgent(slave,"quality_gate/build_01");
+        Slave agent = createDumpAgent();
+        FreeStyleJob job = createFreeStyleJobForAgent(agent);
 
         IssuesRecorder issuesRecorder = job.addPublisher(IssuesRecorder.class, recorder -> {
             recorder.setTool("CheckStyle");
             recorder.setEnabledForFailure(true);
         });
-        issuesRecorder.addQualityGateConfiguration(2, QualityGateType.NEW, false);
+
+        issuesRecorder.addQualityGateConfiguration(4, QualityGateType.NEW, false);
         job.save();
 
         Build build = buildJob(job).shouldBe(Result.SUCCESS);
         build.open();
-
         assertThat(new AnalysisSummary(build, CHECKSTYLE_ID)).hasQualityGateResult(QualityGateResult.SUCCESS);
-        /*jenkins.restart();
 
-        job.open();
-        job.copyResource("quality_gate/build_02");
+        jenkins.restart();
+
+        reconfigureJobWithResource(job, "quality_gate/build_01");
         build = buildJob(job).shouldBe(Result.SUCCESS);
         build.open();
-        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID)).hasQualityGateResult(QualityGateResult.SUCCESS);*/
+        AnalysisSummary analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.SUCCESS);
+        assertThat(analysisSummary).hasNewSize(3);
+        assertThat(analysisSummary).hasFixedSize(0);
+
+
+        jenkins.restart();
+
+        reconfigureJobWithResource(job, "quality_gate/build_02");
+        build = buildJob(job).shouldBe(Result.FAILURE);
+        build.open();
+        analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
+        assertThat(analysisSummary).hasNewSize(5);
+        assertThat(analysisSummary).hasFixedSize(1);
+
     }
 
     /**
@@ -306,6 +321,24 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     public void should_change_build_result_if_quality_gate_is_not_passed() {
         runJobWithQualityGate(false);
         runJobWithQualityGate(true);
+    }
+
+    private Slave createDumpAgent() {
+        SlaveController controller = new LocalSlaveController();
+        Slave agent = null;
+        try {
+            agent = controller.install(jenkins).get();
+        }
+        catch (InterruptedException | ExecutionException e) {
+            throw new AssertionError("Unable to create Agent for test", e);
+        }
+        agent.configure();
+        agent.setLabels("agent");
+        agent.save();
+        agent.waitUntilOnline();
+
+        assertThat(agent.isOnline()).isTrue();
+        return agent;
     }
 
     private void runJobWithQualityGate(final boolean isUnstable) {
@@ -656,7 +689,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @WithCredentials(credentialType = WithCredentials.SSH_USERNAME_PRIVATE_KEY, values = {CREDENTIALS_ID, CREDENTIALS_KEY})
     public void should_parse_warnings_on_agent() {
         DumbSlave dockerAgent = createDockerAgent();
-        FreeStyleJob job = createFreeStyleJobForDockerAgent(dockerAgent, "issue_filter/checkstyle-result.xml");
+        FreeStyleJob job = createFreeStyleJobForAgent(dockerAgent, "issue_filter/checkstyle-result.xml");
         job.addPublisher(IssuesRecorder.class, recorder -> {
             recorder.setTool("CheckStyle", "**/checkstyle-result.xml");
         });
@@ -746,10 +779,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         return script.toString();
     }
 
-    private FreeStyleJob createFreeStyleJobForDockerAgent(final Slave dockerAgent, final String... resourcesToCopy) {
+    private FreeStyleJob createFreeStyleJobForAgent(final Slave agent, final String... resourcesToCopy) {
         FreeStyleJob job = createFreeStyleJob(resourcesToCopy);
         job.configure();
-        job.setLabelExpression(dockerAgent.getName());
+        job.setLabelExpression(agent.getName());
         return job;
     }
 
