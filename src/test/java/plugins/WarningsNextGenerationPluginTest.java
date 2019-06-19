@@ -106,6 +106,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     private static final String NO_PACKAGE = "-";
 
+    private static final String ADMIN_USERNAME = "admin";
+    private static final String USER_USERNAME = "user";
+
     @Inject
     private MailService mail;
 
@@ -138,22 +141,14 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     private void loginAsUser() {
-        String admin = "admin";
-        String user = "user";
-        configureSecurity(admin, user);
-
-        jenkins.login().doLogin(user);
+        jenkins.login().doLogin(USER_USERNAME);
     }
 
     private void loginAsAdmin() {
-        String admin = "admin";
-        String user = "user";
-        configureSecurity(admin, user);
-
-        jenkins.login().doLogin(admin);
+        jenkins.login().doLogin(ADMIN_USERNAME);
     }
 
-    private void configureSecurity(final String admin, final String user) {
+    private void configureSecurity() {
         GlobalSecurityConfig security = new GlobalSecurityConfig(jenkins);
 
         final JenkinsDatabaseSecurityRealm[] realm = new JenkinsDatabaseSecurityRealm[1];
@@ -162,18 +157,19 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         });
 
         // TODO: Dirty workaround to access the realm created in lambda. Mb there is a better solution!
-        realm[0].signup(admin);
-        realm[0].signup(user);
+        realm[0].signup(USER_USERNAME);
+        realm[0].signup(ADMIN_USERNAME);
 
         security.configure(() -> {
             MatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(MatrixAuthorizationStrategy.class);
-            mas.addUser(admin).admin();
-            mas.addUser(user).developer();
+            mas.addUser(ADMIN_USERNAME).admin();
+            mas.addUser(USER_USERNAME).developer();
         });
     }
 
     @Test
     public void loginTest() {
+        configureSecurity();
         loginAsAdmin();
     }
 
