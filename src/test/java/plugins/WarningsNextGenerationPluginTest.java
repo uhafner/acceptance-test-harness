@@ -28,8 +28,10 @@ import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
 import org.jenkinsci.test.acceptance.plugins.email_ext.EmailExtPublisher;
+import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
+import org.jenkinsci.test.acceptance.plugins.mock_security_realm.MockSecurityRealm;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AbstractNonDetailsIssuesTableRow;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AnalysisResult;
@@ -52,6 +54,8 @@ import org.jenkinsci.test.acceptance.po.Build;
 import org.jenkinsci.test.acceptance.po.Build.Result;
 import org.jenkinsci.test.acceptance.po.DumbSlave;
 import org.jenkinsci.test.acceptance.po.FreeStyleJob;
+import org.jenkinsci.test.acceptance.po.GlobalSecurityConfig;
+import org.jenkinsci.test.acceptance.po.JenkinsDatabaseSecurityRealm;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
@@ -133,6 +137,46 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         }
     }
 
+    private void loginAsUser() {
+        String admin = "admin";
+        String user = "user";
+        configureSecurity(admin, user);
+
+        jenkins.login().doLogin(user);
+    }
+
+    private void loginAsAdmin() {
+        String admin = "admin";
+        String user = "user";
+        configureSecurity(admin, user);
+
+        jenkins.login().doLogin(admin);
+    }
+
+    private void configureSecurity(final String admin, final String user) {
+        GlobalSecurityConfig security = new GlobalSecurityConfig(jenkins);
+
+        final JenkinsDatabaseSecurityRealm[] realm = new JenkinsDatabaseSecurityRealm[1];
+        security.configure(() -> {
+            realm[0] = security.useRealm(JenkinsDatabaseSecurityRealm.class);
+        });
+
+        // TODO: Dirty workaround to access the realm created in lambda. Mb there is a better solution!
+        realm[0].signup(admin);
+        realm[0].signup(user);
+
+        security.configure(() -> {
+            MatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(MatrixAuthorizationStrategy.class);
+            mas.addUser(admin).admin();
+            mas.addUser(user).developer();
+        });
+    }
+
+    @Test
+    public void loginTest() {
+        loginAsAdmin();
+    }
+
     /**
      * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
      * rebuild will reach the quality gate again.
@@ -154,6 +198,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(agent.isOnline()).isTrue();
 
+        loginAsAdmin();
+
         FreeStyleJob job = createFreeStyleJob();
         job.configure();
         job.setLabelExpression(agent.getName());
@@ -171,6 +217,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         reconfigureJobWithResource(job, "build_status_test/build_02/pmd.xml");
         build = buildJob(job).shouldBeUnstable();
         build.open();
+
+        loginAsUser();
 
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
@@ -213,7 +261,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
     }
 
-    private WorkflowJob setPipelineScript(WorkflowJob job, final String resource, final boolean qualityGate, final String agentName) {
+    private WorkflowJob setPipelineScript(WorkflowJob job, final String resource, final boolean qualityGate,
+            final String agentName) {
         if (qualityGate) {
             job.configure();
         }
