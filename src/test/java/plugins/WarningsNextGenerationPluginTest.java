@@ -110,14 +110,47 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
 
     /**
-     * Runs docker tests.
+     * Runs two consecutive freestyle-jobs with restart in between runs, tests persistence of summary and
+     * tests functionality of quality gate reset.
      */
     @Test
-    public void test() {
+    public void shouldDisplayNewWarningsWhenPreviouslyQualityGateReset() {
         Slave agent = createAgent();
-        FreeStyleJob job = createFreeStyleJobForDockerAgent(agent, "issue_filter/checkstyle-result.xml");
+        FreeStyleJob job = createFreeStyleJobWithQualityGates(agent, "build_status_test/build_01");
+        job.save();
 
-        //FreeStyleJob job = createFreeStyleJobForAgent(agent.getName(), "issue_filter/checkstyle-result.xml");
+        Build referenceBuild = buildJob(job).shouldBe(Result.UNSTABLE);
+        referenceBuild.open();
+        AnalysisSummary summary = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
+        assertThat(summary).isDisplayed();
+        assertThat(summary).hasTitleText("CheckStyle: One warning");
+        assertThat(summary).hasNewSize(0);
+        assertThat(summary).hasFixedSize(0);
+        assertThat(summary).hasReferenceBuild(0);
+        assertThat(summary.qualityGateResetButtonIsVisible()).isTrue();
+
+        summary.resetQualityGate();
+
+        referenceBuild.open();
+        summary = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
+        assertThat(summary.qualityGateResetButtonIsVisible()).isFalse();
+
+        int summaryHashBeforeRestart = summary.hashCode();
+        restartAndAssertPersistenceOfSummary(referenceBuild, summaryHashBeforeRestart);
+
+        reconfigureJobWithResource(job, "build_status_test/build_02");
+        job.configure();
+        job.save();
+
+        Build build = buildJob(job).shouldBe(Result.UNSTABLE);
+        build.open();
+        summary = new AnalysisSummary(build, CHECKSTYLE_ID);
+        assertThat(summary).isDisplayed();
+        assertThat(summary).hasTitleText("CheckStyle: 3 warnings");
+        assertThat(summary).hasNewSize(3);
+        assertThat(summary).hasFixedSize(1);
+        assertThat(summary).hasReferenceBuild(1);
+        assertThat(summary.qualityGateResetButtonIsVisible()).isTrue();
     }
 
     @SuppressWarnings("illegalcatch")
@@ -136,6 +169,29 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         catch (Exception e) {
             throw new AssertionError();
         }
+    }
+
+    private FreeStyleJob createFreeStyleJobWithQualityGates(final Slave agent, final String... resources) {
+        FreeStyleJob job = createFreeStyleJobForDockerAgent(agent, resources);
+        IssuesRecorder recorder = enableQualityGate(job);
+        recorder.setEnabledForFailure(true);
+        return job;
+    }
+
+    private IssuesRecorder enableQualityGate(final FreeStyleJob job) {
+        return job.addPublisher(IssuesRecorder.class, recorder -> {
+            recorder.setTool("CheckStyle", "**/*.xml");
+            recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, true);
+        });
+    }
+
+    private void restartAndAssertPersistenceOfSummary(final Build referenceBuild, final int summaryHashBeforeRestart) {
+        jenkins.restart();
+        jenkins.waitForStarted();
+        referenceBuild.open();
+        AnalysisSummary summaryAfterRestart = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
+        int summaryHashAfterRestart = summaryAfterRestart.hashCode();
+        assertThat(summaryHashBeforeRestart).isEqualTo(summaryHashAfterRestart);
     }
 
     /**

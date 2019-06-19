@@ -2,6 +2,7 @@ package org.jenkinsci.test.acceptance.plugins.warnings_ng;
 
 import java.util.List;
 import java.util.NoSuchElementException;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -196,6 +197,22 @@ public class AnalysisSummary extends PageObject {
         return openLink("Reference", "No reference build link found");
     }
 
+    /**
+     * Clicks the quality gate reset button/link.
+     */
+    public void resetQualityGate() {
+        openLink("reset", "No quality gate reset button/link found");
+    }
+
+    /**
+     * Checks whether quality gate reset button/link is visible or not.
+     *
+     * @return {@code true} if quality gate reset button/link exists, {@code false} otherwise
+     */
+    public boolean qualityGateResetButtonIsVisible() {
+        return findClickableResultEntryByNamePart("reset").isPresent();
+    }
+
     private AnalysisResult openLink(final String linkText, final String errorMessage) {
         Optional<WebElement> link = findClickableResultEntryByNamePart(linkText);
         if (link.isPresent()) {
@@ -308,5 +325,26 @@ public class AnalysisSummary extends PageObject {
      */
     public enum QualityGateResult {
         SUCCESS, FAILED, UNSTABLE, INACTIVE;
+    }
+
+    @Override
+    public boolean equals(final Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
+        AnalysisSummary that = (AnalysisSummary) o;
+        return Objects.equals(summary, that.summary)
+                && Objects.equals(title, that.title)
+                && Objects.equals(results, that.results)
+                && Objects.equals(id, that.id);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(summary.getText(), title.getText(), getFixedSize(), getNewSize(), getQualityGateResult(),
+                getReferenceBuild(), qualityGateResetButtonIsVisible());
     }
 }
