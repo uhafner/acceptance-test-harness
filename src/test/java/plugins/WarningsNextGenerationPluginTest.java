@@ -9,11 +9,15 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map.Entry;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
 import org.junit.Test;
 
 import com.google.inject.Inject;
+import com.sun.scenario.effect.impl.sw.sse.SSEBlend_SRC_OUTPeer;
+
+import jdk.nashorn.tools.Shell;
 
 import org.jenkinsci.test.acceptance.docker.DockerContainerHolder;
 import org.jenkinsci.test.acceptance.docker.fixtures.JavaGitContainer;
@@ -48,6 +52,8 @@ import org.jenkinsci.test.acceptance.po.FreeStyleJob;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
+import org.jenkinsci.test.acceptance.slave.LocalSlaveController;
+import org.jenkinsci.test.acceptance.slave.SlaveController;
 
 import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
 
@@ -106,6 +112,74 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     @Inject
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
+
+    /**
+     * Runs a Freestyle Job with java and quality gate multiple times and verifies the quality gate
+     *  Variante 1: No resetting of Quality Gate
+     */
+    @Test
+    public void shouldVerifyQualityGate() throws ExecutionException, InterruptedException {
+
+        SlaveController controller = new LocalSlaveController();
+        Slave agent = controller.install(jenkins).get();
+        agent.configure();
+        agent.setLabels("agent");
+        agent.save();
+        agent.waitUntilOnline();
+
+        assertThat(agent.isOnline()).isTrue();
+
+        FreeStyleJob job = createFreeStyleJobForDockerAgent(agent, "issue_filter/checkstyle-result.xml");
+
+        job.addPublisher(IssuesRecorder.class, recorder -> {
+            recorder.addTool("PMD");
+            recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, false);
+        });
+
+
+        job.save();
+
+        Build build = buildJob(job);
+
+
+        assertThat(build.getConsole())
+                .contains("[PMD] -> All quality gates have been passed")
+                .contains("[PMD] Created analysis result for 0 issues (found 0 new issues, fixed 0 issues)");
+
+
+        reconfigureJobWithResource(job, "warningsFiles/1Warning/pmd.xml");
+
+        build = buildJob(job);
+
+        assertThat(build.getConsole())
+                .contains("[PMD] Issues delta (vs. reference build): outstanding: 0, new: 1, fixed: 0")
+                .contains("[PMD] -> FAILED - Total number of issues (any severity): 1 - Quality QualityGate: 1")
+                .contains("[PMD] -> Some quality gates have been missed: overall result is FAILED")
+                .contains("Build step 'Record compiler warnings and static analysis results' changed build result to FAILURE")
+                .contains("Finished: FAILURE");
+
+        jenkins.restart();
+
+        job.configure();
+        job.removeFirstBuildStep();
+
+
+        reconfigureJobWithResource(job, "warningsFiles/2Warning/pmd.xml");
+
+        build = buildJob(job);
+
+        assertThat(build.getConsole())
+                .contains("[PMD] -> 0 resolved, 2 unresolved, 0 already resolved")
+                .contains("[PMD] Issues delta (vs. reference build): outstanding: 0, new: 2, fixed: 0")
+                .contains("[PMD] -> FAILED - Total number of issues (any severity): 2 - Quality QualityGate: 1")
+                .contains("[PMD] -> Some quality gates have been missed: overall result is FAILED")
+                .contains("Build step 'Record compiler warnings and static analysis results' changed build result to FAILURE")
+                .contains("Finished: FAILURE");
+
+        System.out.println("------------------CONSOLE OUTPUT------------------");
+        System.out.println(build.getConsole());
+        System.out.println("------------------CONSOLE END----------------------");
+    }
 
     /**
      * Runs a pipeline with checkstyle and pmd. Verifies the expansion of tokens with the token-macro plugin.
