@@ -140,6 +140,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         }
     }
 
+    private void logoutUser(){
+        jenkins.logout();
+    }
+
     private void loginAsUser() {
         jenkins.login().doLogin(USER_USERNAME);
     }
@@ -163,7 +167,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         security.configure(() -> {
             MatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(MatrixAuthorizationStrategy.class);
             mas.addUser(ADMIN_USERNAME).admin();
-            mas.addUser(USER_USERNAME).developer();
+            mas.addUser(USER_USERNAME).readOnly();
         });
     }
 
@@ -194,6 +198,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(agent.isOnline()).isTrue();
 
+        configureSecurity();
         loginAsAdmin();
 
         FreeStyleJob job = createFreeStyleJob();
@@ -212,17 +217,27 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         reconfigureJobWithResource(job, "build_status_test/build_02/pmd.xml");
         build = buildJob(job).shouldBeUnstable();
-        build.open();
+        //build.open();
 
+        logoutUser();
         loginAsUser();
-
+        build = job.getLastBuild().shouldBeUnstable();
+        build.open();
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getResetQualityGateButton()).isNull();
+
+        logoutUser();
+        loginAsAdmin();
+        build = job.getLastBuild().shouldBeUnstable();
+        build.open();
+        pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 2 warnings");
         assertThat(pmd.getResetQualityGateButton()).isNotNull();
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
-
         pmd.getResetQualityGateButton().click();
 
         new WebDriverWait(driver, 5).until(ExpectedConditions.invisibilityOf(pmd.getResetQualityGateButton()));
@@ -234,6 +249,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
         jenkins.restart();
+        loginAsAdmin();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
 
