@@ -107,7 +107,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String NO_PACKAGE = "-";
 
     private static final String ADMIN_USERNAME = "admin";
-    private static final String USER_USERNAME = "user";
+    //private static final String USER_USERNAME = "anonymous";
 
     @Inject
     private MailService mail;
@@ -144,10 +144,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         jenkins.logout();
     }
 
-    private void loginAsUser() {
-        jenkins.login().doLogin(USER_USERNAME);
-    }
-
     private void loginAsAdmin() {
         jenkins.login().doLogin(ADMIN_USERNAME);
     }
@@ -160,14 +156,13 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             realm[0] = security.useRealm(JenkinsDatabaseSecurityRealm.class);
         });
 
-        // TODO: Dirty workaround to access the realm created in lambda. Mb there is a better solution!
-        realm[0].signup(USER_USERNAME);
+        // TODO: Workaround to access the realm created in lambda. Mb there is a better solution!
         realm[0].signup(ADMIN_USERNAME);
 
         security.configure(() -> {
             MatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(MatrixAuthorizationStrategy.class);
             mas.addUser(ADMIN_USERNAME).admin();
-            mas.addUser(USER_USERNAME).readOnly();
+            mas.getAnonymousUser().readOnly();
         });
     }
 
@@ -175,6 +170,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     public void loginTest() {
         configureSecurity();
         loginAsAdmin();
+        jenkins.restart();
     }
 
     /**
@@ -220,7 +216,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         build.open();
 
         logoutUser();
-        loginAsUser();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
@@ -228,7 +223,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd).hasTitleText("PMD: 2 warnings");
         assertThat(pmd.getResetQualityGateButton()).isNull();
 
-        logoutUser();
         loginAsAdmin();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
@@ -248,8 +242,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
-        // TODO: With Permissions enabled restart fuction does not recognize, when Jenkins is up again.
-        jenkins.restart();
+        jenkins.restart(); // Our use is anonymous due to problems with restart if we use a real user
         loginAsAdmin();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
