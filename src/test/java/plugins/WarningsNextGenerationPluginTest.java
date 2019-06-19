@@ -217,7 +217,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         reconfigureJobWithResource(job, "build_status_test/build_02/pmd.xml");
         build = buildJob(job).shouldBeUnstable();
-        //build.open();
+        build.open();
 
         logoutUser();
         loginAsUser();
@@ -248,6 +248,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
+        // TODO: With Permissions enabled restart fuction does not recognize, when Jenkins is up again.
         jenkins.restart();
         loginAsAdmin();
         build = job.getLastBuild().shouldBeUnstable();
