@@ -76,6 +76,8 @@ import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
  * @author Arne Schöntag
  * @author Alexandra Wenzel
  * @author Nikolai Wohlgemuth
+ * @author Tobias Redl
+ * @author Andreas Neumeier
  */
 @WithPlugins("warnings-ng")
 public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
@@ -104,7 +106,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private MailService mail;
 
     /**
-     *
+     * TODO: Remove before branch gets merged into master. Test exists only for testing purpose.
      */
     @Test
     public void mailServiceTest() {
