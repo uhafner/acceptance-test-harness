@@ -140,7 +140,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         }
     }
 
-    private void logoutUser(){
+    private void logoutUser() {
         jenkins.logout();
     }
 
@@ -175,10 +175,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     /**
      * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
-     * rebuild will reach the quality gate again.
+     * rebuild will reach the quality gate again. And checks that readOnly users are now allowed to trigger reset the
+     * quality gate while an admin is able to.
      */
     @Test
-    public void shouldFreeStyleJobReachQualityGateRebuildReachAgain() {
+    public void shouldFreeStyleJobReachQualityGateRebuildReachAgainWithPermissions() {
         SlaveController controller = new LocalSlaveController();
         Slave agent;
         try {
@@ -221,7 +222,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getResetQualityGateButton()).isNull();
+        assertThat(pmd.getNewSize()).isEqualTo(2);
+        assertThat(pmd.getResetQualityGateButton()).isNull();  // No permission to reset
 
         loginAsAdmin();
         build = job.getLastBuild().shouldBeUnstable();
@@ -229,6 +231,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(2);
         assertThat(pmd.getResetQualityGateButton()).isNotNull();
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
@@ -238,11 +241,12 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(2);
         assertThat(pmd.getResetQualityGateButton()).isNull();
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
-        jenkins.restart(); // Our use is anonymous due to problems with restart if we use a real user
+        jenkins.restart(); // Our readOnly user is anonymous due to problems with restart if we use a real user
         loginAsAdmin();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
@@ -250,6 +254,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(2);
         assertThat(pmd.getResetQualityGateButton()).isNull();
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
@@ -262,7 +267,99 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 3 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(1);
         assertThat(pmd.getResetQualityGateButton()).isNull();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+    }
+
+    /**
+     * Tests that quality gate is reached and shown in build history. And checks, that previous issues are kept when no
+     * reset is triggered. Although tests if a Mail is sent to the Job Admin when the build fails.
+     */
+    @Test
+    public void shouldFreeStyleJobReachQualityGateRebuildReachAgainWithMailService() {
+        SlaveController controller = new LocalSlaveController();
+        Slave agent;
+        try {
+            agent = controller.install(jenkins).get();
+        }
+        catch (InterruptedException | ExecutionException e) {
+            throw new AssertionError("Error while getting slave.", e);
+        }
+        agent.configure();
+        agent.setLabels("agent");
+        agent.save();
+        agent.waitUntilOnline();
+
+        assertThat(agent.isOnline()).isTrue();
+
+        configureSecurity();
+        loginAsAdmin();
+
+        FreeStyleJob job = createFreeStyleJob();
+        job.configure();
+        job.setLabelExpression(agent.getName());
+
+        IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class, r -> {
+            r.addTool("PMD");
+            r.setEnabledForFailure(true);
+        });
+        recorder.addQualityGateConfiguration(2, QualityGateType.NEW, true);
+        job.save();
+
+        Build build = buildJob(job).shouldSucceed();
+        build.open();
+
+        reconfigureJobWithResource(job, "build_status_test/build_02/pmd.xml");
+        build = buildJob(job).shouldBeUnstable();
+        build.open();
+
+        logoutUser();
+        build = job.getLastBuild().shouldBeUnstable();
+        build.open();
+        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(2);
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+        assertThat(pmd.getResetQualityGateButton()).isNull(); // No permission to reset
+
+        loginAsAdmin();
+        build = job.getLastBuild().shouldBeUnstable();
+        build.open();
+        pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(2);
+        assertThat(pmd.getResetQualityGateButton()).isNotNull(); // No click in this test
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        jenkins.restart(); // Our readOnly user is anonymous due to problems with restart if we use a real user
+        loginAsAdmin();
+        build = job.getLastBuild().shouldBeUnstable();
+        build.open();
+
+        pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(2);
+        assertThat(pmd.getResetQualityGateButton()).isNotNull();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        reconfigureJobWithResource(job, "build_status_test/build_01/pmd.xml");
+
+        build = buildJob(job).shouldBeUnstable();
+        build.open();
+
+        pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 3 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(3); // Because we did not reset
+        assertThat(pmd.getResetQualityGateButton()).isNotNull();
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
     }
