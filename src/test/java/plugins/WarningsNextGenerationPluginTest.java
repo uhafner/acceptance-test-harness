@@ -10,6 +10,7 @@ import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map.Entry;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 import org.junit.Test;
 
@@ -21,6 +22,8 @@ import org.jenkinsci.test.acceptance.junit.AbstractJUnitTest;
 import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
+import org.jenkinsci.test.acceptance.plugins.email_ext.EmailExtPublisher;
+import org.jenkinsci.test.acceptance.plugins.mailer.Mailer;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
@@ -50,6 +53,7 @@ import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
 import org.jenkinsci.test.acceptance.slave.LocalSlaveController;
 import org.jenkinsci.test.acceptance.slave.SlaveController;
+import org.jenkinsci.test.acceptance.utils.mail.Mailtrap;
 
 import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
 
@@ -106,15 +110,66 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String CREDENTIALS_ID = "git";
     private static final String CREDENTIALS_KEY = "/org/jenkinsci/test/acceptance/docker/fixtures/GitContainer/unsafe";
 
+    private static final boolean MAILTRAP_ENABLED = true;
+    private static final boolean MAILTRAP_USE_CUSTOM_CREDENTIALS = true;
+    private static final String MAILTRAP_TOKEN = "316bb9d2692c82fb25f6f3a4c7d4fa2b";
+    private static final String MAILTRAP_MAILBOX = "d71296a42edc2b";
+    private static final String MAILTRAP_INBOX = "631796";
+    private static final String MAILTRAP_PASSWORD = "4d4a6fb60e0760";
+    private static final String MAIL_RECIPIENT = "dev@example.com";
+
     @Inject
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
 
     /**
-     * Runs two consecutive freestyle-jobs with restart in between runs, tests persistence of summary and
-     * tests functionality of quality gate reset.
+     * Runs two consecutive freestyle-jobs with restart in between runs without resetting quality gate
+     * and tests persistence of summary.
      */
     @Test
-    public void shouldDisplayNewWarningsWhenPreviouslyQualityGateReset() {
+    public void shouldDisplayMoreWarningsOnSecondBuildOfFreestyleJob() {
+        Mailtrap mail = configureMailTrapAccount();
+        Slave agent = createAgent();
+        FreeStyleJob job = createFreeStyleJobWithQualityGates(agent, "build_status_test/build_01");
+        job.save();
+
+        Build referenceBuild = buildJob(job).shouldBe(Result.UNSTABLE);
+        referenceBuild.open();
+
+        AnalysisSummary summary = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
+        assertThat(summary).isDisplayed();
+        assertThat(summary).hasTitleText("CheckStyle: One warning");
+        assertThat(summary).hasNewSize(0);
+        assertThat(summary).hasFixedSize(0);
+        assertThat(summary).hasReferenceBuild(0);
+        assertThat(summary.qualityGateResetButtonIsVisible()).isTrue();
+
+        int summaryHashBeforeRestart = summary.hashCode();
+        restartAndAssertPersistenceOfSummary(referenceBuild, summaryHashBeforeRestart);
+
+        reconfigureJobWithResource(job, "build_status_test/build_02");
+        job.configure();
+        addMailPublisherToJobIfEnabled(job);
+        job.save();
+
+        Build build = buildJob(job);
+        build.open();
+        summary = new AnalysisSummary(build, CHECKSTYLE_ID);
+        assertThat(summary).isDisplayed();
+        assertThat(summary).hasTitleText("CheckStyle: 3 warnings");
+        assertThat(summary).hasNewSize(0);
+        assertThat(summary).hasFixedSize(0);
+        assertThat(summary).hasReferenceBuild(0);
+        assertMailIfEnabled(mail);
+    }
+
+    /**
+     * Runs two consecutive freestyle-jobs with restart in between runs, tests persistence of summary and tests
+     * functionality of quality gate reset.
+     */
+    @Test
+    public void shouldDisplayNewWarningsWhenPreviouslyQualityGateResetOfFreestyleJob() {
+
+        Mailtrap mail = configureMailTrapAccount();
         Slave agent = createAgent();
         FreeStyleJob job = createFreeStyleJobWithQualityGates(agent, "build_status_test/build_01");
         job.save();
@@ -140,9 +195,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         reconfigureJobWithResource(job, "build_status_test/build_02");
         job.configure();
+        addMailPublisherToJobIfEnabled(job);
         job.save();
 
-        Build build = buildJob(job).shouldBe(Result.UNSTABLE);
+        Build build = buildJob(job);
         build.open();
         summary = new AnalysisSummary(build, CHECKSTYLE_ID);
         assertThat(summary).isDisplayed();
@@ -151,6 +207,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(summary).hasFixedSize(1);
         assertThat(summary).hasReferenceBuild(1);
         assertThat(summary.qualityGateResetButtonIsVisible()).isTrue();
+        assertMailIfEnabled(mail);
     }
 
     @SuppressWarnings("illegalcatch")
@@ -183,6 +240,46 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             recorder.setTool("CheckStyle", "**/*.xml");
             recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, true);
         });
+    }
+
+    private Mailtrap configureMailTrapAccount() {
+        Mailtrap mail;
+        if (MAILTRAP_USE_CUSTOM_CREDENTIALS) {
+            mail = new Mailtrap(MAILTRAP_MAILBOX, MAILTRAP_PASSWORD, MAILTRAP_TOKEN, MAILTRAP_INBOX);
+        }
+        else {
+            mail = new Mailtrap();
+        }
+        mail.setup(jenkins);
+        return mail;
+    }
+
+    private void addMailPublisherToJobIfEnabled(final FreeStyleJob job) {
+        if (MAILTRAP_ENABLED) {
+            job.addShellStep("false"); // in order to force sending of mail
+            EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
+            pub.setRecipient(MAIL_RECIPIENT);
+            pub.subject.set("$DEFAULT_SUBJECT");
+            pub.body.set("build: #${BUILD_NUMBER}\n"
+                    + "analysis issues count: ${ANALYSIS_ISSUES_COUNT}");
+            pub.ensureAdvancedOpened();
+        }
+    }
+
+    @SuppressWarnings("illegalCatch")
+    private void assertMailIfEnabled(final Mailtrap mail) {
+        if (MAILTRAP_ENABLED) {
+            try {
+                mail.assertMail(
+                        Pattern.compile(".* - Build # 2 - Failure!"),
+                        MAIL_RECIPIENT,
+                        Pattern.compile("build: #2\n"
+                                + "analysis issues count: 3"));
+            }
+            catch (Exception e) {
+                throw new AssertionError(e.getMessage());
+            }
+        }
     }
 
     private void restartAndAssertPersistenceOfSummary(final Build referenceBuild, final int summaryHashBeforeRestart) {
