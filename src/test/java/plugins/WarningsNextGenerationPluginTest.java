@@ -7,7 +7,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
@@ -31,7 +33,6 @@ import org.jenkinsci.test.acceptance.plugins.email_ext.EmailExtPublisher;
 import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
-import org.jenkinsci.test.acceptance.plugins.mock_security_realm.MockSecurityRealm;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AbstractNonDetailsIssuesTableRow;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AnalysisResult;
@@ -140,10 +141,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     private void configureBuildErrorMailForJob(final FreeStyleJob job) {
         //job.configure(() -> {
-         //   EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
-          //  pub.subject.set("$DEFAULT_SUBJECT");
-           // pub.setRecipient("dev@example.com");
-          //  pub.body.set("$DEFAULT_CONTENT");
+        //   EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
+        //  pub.subject.set("$DEFAULT_SUBJECT");
+        // pub.setRecipient("dev@example.com");
+        //  pub.body.set("$DEFAULT_CONTENT");
         //});
         //Todo: figure out how this can be replaced by lambda (see above)
         job.configure();
@@ -156,6 +157,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     //Todo: Check JavaDoc
+
     /**
      * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
      * rebuild will reach the quality gate again. And checks that readOnly users are now allowed to trigger reset the
@@ -270,12 +272,13 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     //Todo: Check JavaDoc
+
     /**
      * Tests that quality gate is reached and shown in build history. And checks, that previous issues are kept when no
      * reset is triggered. Although tests if a Mail is sent to the Job Admin when the build fails.
      */
     @Test
-    public void shouldFreeStyleJobReachQualityGateRebuildReachAgainWithMailService() {
+    public void shouldFreeStyleJobReachQualityGateRebuildReachAgainNoReset() {
         SlaveController controller = new LocalSlaveController();
         Slave agent;
         try {
@@ -365,6 +368,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
         //Todo: Mb more checks on the mail
+        //Todo: Move email address and stuff to some variable
         try {
             mail.assertMail(Pattern.compile("^Modified "),
                     "dev@example.com",
@@ -376,27 +380,45 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     private WorkflowJob setPipelineScript(WorkflowJob job, final String resource, final boolean qualityGate,
-            final String agentName) {
+            final String agentName, final boolean sendMailOnBuildFail) {
         if (qualityGate) {
             job.configure();
         }
         String pmd = job.copyResourceStep(resource);
-        String pipeline = "node('" + agentName + "') {\n";
+        String pipeline = "node('" + agentName + "') {\n%s}";
+        List<String> stageList = new ArrayList<>();
+
         if (qualityGate) {
-            pipeline += pmd.replace("\\", "\\\\");
+            stageList.add(pmd.replace("\\", "\\\\"));
+            stageList.add("stage('Build')  {\n"
+                    + "\trecordIssues tool: pmdParser(pattern: '**/pmd*'), "
+                    + "qualityGates: [[threshold: 2, "
+                    + "type: 'NEW', "
+                    + "unstable: true]]\n"
+                    + "}");
         }
-        pipeline += "recordIssues tool: pmdParser(pattern: '**/pmd*')";
-        if (qualityGate) {
-            pipeline += ", qualityGates: [[threshold: 2, type: 'NEW', unstable: true]]";
+        else {
+            stageList.add("stage('Build')  {recordIssues tool: pmdParser(pattern: '**/pmd*')}");
         }
-        pipeline += "\n}";
-        job.script.set(pipeline);
+
+        //Todo: Move email address and stuff to some variable
+        if (sendMailOnBuildFail) {
+            stageList.add("stage('failedNewAll') {\n"
+                    + "\temailext body: '$DEFAULT_CONTENT\\nwith amendment', "
+                    + "recipientProviders: [developers()], "
+                    + "subject: 'Modified $DEFAULT_SUBJECT', "
+                    + "to: 'dev@example.com'\n"
+                    + "}");
+        }
+
+        job.script.set(String.format(pipeline, String.join("\n", stageList)));
         job.sandbox.check();
         job.save();
         return job;
     }
 
     //Todo: Check JavaDoc
+
     /**
      * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
      * rebuild will reach the quality gate again.
@@ -417,23 +439,27 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         agent.save();
         agent.waitUntilOnline();
 
+        mail.setup(jenkins);
+
         assertThat(agent.isOnline()).isTrue();
 
         final String agentName = agent.getName();
 
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
-        setPipelineScript(job, "", false, agentName);
+        setPipelineScript(job, "", false, agentName, false);
 
         Build build = buildJob(job).shouldSucceed();
         build.open();
 
-        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/pmd.xml", true, agentName);
+        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/pmd.xml", true, agentName,
+                false);
         build = buildJob(job).shouldBeUnstable();
         build.open();
 
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(2);
         assertThat(pmd.getResetQualityGateButton()).isNotNull();
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
@@ -444,6 +470,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(2);
         assertThat(pmd.getResetQualityGateButton()).isNull();
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
@@ -455,20 +482,34 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(2);
         assertThat(pmd.getResetQualityGateButton()).isNull();
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
-        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true, agentName);
+        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true, agentName,
+                true);
         build = buildJob(job).shouldSucceed();
         build.open();
 
         pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText("PMD: 3 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(1);
         assertThat(pmd.getResetQualityGateButton()).isNull();
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        //Todo: Mb more checks on the mail
+        //Todo: Move email address and stuff to some variable
+        try {
+            mail.assertMail(Pattern.compile("^Modified "),
+                    "dev@example.com",
+                    Pattern.compile("\nwith amendment$"));
+        }
+        catch (MessagingException | IOException e) {
+            throw new AssertionError("Error while assert mail.", e);
+        }
     }
 
     /**
