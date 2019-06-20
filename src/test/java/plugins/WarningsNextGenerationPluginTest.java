@@ -107,7 +107,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String NO_PACKAGE = "-";
 
     private static final String ADMIN_USERNAME = "admin";
-    //private static final String USER_USERNAME = "anonymous";
+    //private static final String USER_USERNAME = "anonymous"; // TODO: Dont forget to remove
 
     @Inject
     private MailService mail;
@@ -166,11 +166,30 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         });
     }
 
+    /**
+     * TODO: Remove before branch gets merged into master. Test exists only for testing purpose.
+     */
     @Test
     public void loginTest() {
         configureSecurity();
         loginAsAdmin();
         jenkins.restart();
+    }
+
+    private void configureBuildErrorMailForJob(final FreeStyleJob job) {
+        //job.configure(() -> {
+         //   EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
+          //  pub.subject.set("$DEFAULT_SUBJECT");
+           // pub.setRecipient("dev@example.com");
+          //  pub.body.set("$DEFAULT_CONTENT");
+        //});
+        //Todo: figure out how this can be replaced by lambda (see above)
+        job.configure();
+        EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
+        pub.subject.set("$DEFAULT_SUBJECT");
+        pub.setRecipient("dev@example.com");
+        pub.body.set("$DEFAULT_CONTENT");
+        job.save();
     }
 
     /**
@@ -179,7 +198,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * quality gate while an admin is able to.
      */
     @Test
-    public void shouldFreeStyleJobReachQualityGateRebuildReachAgainWithPermissions() {
+    public void shouldFreeStyleJobReachQualityGateRebuildReachAgain() {
         SlaveController controller = new LocalSlaveController();
         Slave agent;
         try {
@@ -201,6 +220,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         FreeStyleJob job = createFreeStyleJob();
         job.configure();
         job.setLabelExpression(agent.getName());
+        //configureBuildErrorMailForJob(job); //Todo: remove here - testing purpose
 
         IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class, r -> {
             r.addTool("PMD");
@@ -213,6 +233,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         build.open();
 
         reconfigureJobWithResource(job, "build_status_test/build_02/pmd.xml");
+        configureBuildErrorMailForJob(job);
         build = buildJob(job).shouldBeUnstable();
         build.open();
 
@@ -312,6 +333,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         build.open();
 
         reconfigureJobWithResource(job, "build_status_test/build_02/pmd.xml");
+        configureBuildErrorMailForJob(job);
         build = buildJob(job).shouldBeUnstable();
         build.open();
 
