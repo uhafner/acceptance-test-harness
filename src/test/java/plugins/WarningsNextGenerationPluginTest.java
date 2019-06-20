@@ -185,10 +185,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         //});
         //Todo: figure out how this can be replaced by lambda (see above)
         job.configure();
+        job.addShellStep("fail");
         EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
-        pub.subject.set("$DEFAULT_SUBJECT");
+        pub.subject.set("Modified $DEFAULT_SUBJECT");
         pub.setRecipient("dev@example.com");
-        pub.body.set("$DEFAULT_CONTENT");
+        pub.body.set("$DEFAULT_CONTENT\nwith amendment");
         job.save();
     }
 
@@ -211,6 +212,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         agent.setLabels("agent");
         agent.save();
         agent.waitUntilOnline();
+        
+        mail.setup(jenkins);
 
         assertThat(agent.isOnline()).isTrue();
 
@@ -220,7 +223,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         FreeStyleJob job = createFreeStyleJob();
         job.configure();
         job.setLabelExpression(agent.getName());
-        //configureBuildErrorMailForJob(job); //Todo: remove here - testing purpose
 
         IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class, r -> {
             r.addTool("PMD");
@@ -233,7 +235,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         build.open();
 
         reconfigureJobWithResource(job, "build_status_test/build_02/pmd.xml");
-        configureBuildErrorMailForJob(job);
         build = buildJob(job).shouldBeUnstable();
         build.open();
 
@@ -281,8 +282,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
         reconfigureJobWithResource(job, "build_status_test/build_01/pmd.xml");
+        configureBuildErrorMailForJob(job);
 
-        build = buildJob(job).shouldSucceed();
+        build = buildJob(job).shouldFail(); // We need a fail - otherwise no mail is sent
         build.open();
 
         pmd = new AnalysisSummary(build, PMD_ID);
@@ -292,6 +294,16 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd.getResetQualityGateButton()).isNull();
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        //Todo: Mb more checks on the mail
+        try {
+            mail.assertMail(Pattern.compile("^Modified "),
+                    "dev@example.com",
+                    Pattern.compile("\nwith amendment$"));
+        }
+        catch (MessagingException | IOException e) {
+            throw new AssertionError("Error while assert mail.", e);
+        }
     }
 
     /**
@@ -312,6 +324,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         agent.setLabels("agent");
         agent.save();
         agent.waitUntilOnline();
+
+        mail.setup(jenkins);
 
         assertThat(agent.isOnline()).isTrue();
 
@@ -373,8 +387,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
         reconfigureJobWithResource(job, "build_status_test/build_01/pmd.xml");
+        configureBuildErrorMailForJob(job);
 
-        build = buildJob(job).shouldBeUnstable();
+        build = buildJob(job).shouldFail(); // We need a fail - otherwise no mail is sent
         build.open();
 
         pmd = new AnalysisSummary(build, PMD_ID);
@@ -384,6 +399,16 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(pmd.getResetQualityGateButton()).isNotNull();
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        //Todo: Mb more checks on the mail
+        try {
+            mail.assertMail(Pattern.compile("^Modified "),
+                    "dev@example.com",
+                    Pattern.compile("\nwith amendment$"));
+        }
+        catch (MessagingException | IOException e) {
+            throw new AssertionError("Error while assert mail.", e);
+        }
     }
 
     private WorkflowJob setPipelineScript(WorkflowJob job, final String resource, final boolean qualityGate,
