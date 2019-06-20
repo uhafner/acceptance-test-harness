@@ -512,6 +512,98 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         }
     }
 
+    //Todo: Java Doc
+    /**
+     * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
+     * rebuild will reach the quality gate again.
+     */
+    @Test
+    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
+    public void shouldPipelineJobReachQualityGateRebuildReachAgainNoReset() {
+        SlaveController controller = new LocalSlaveController();
+        Slave agent;
+        try {
+            agent = controller.install(jenkins).get();
+        }
+        catch (InterruptedException | ExecutionException e) {
+            throw new AssertionError("Error while getting slave.", e);
+        }
+        agent.configure();
+        agent.setLabels("agent");
+        agent.save();
+        agent.waitUntilOnline();
+
+        mail.setup(jenkins);
+
+        assertThat(agent.isOnline()).isTrue();
+
+        final String agentName = agent.getName();
+
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+        setPipelineScript(job, "", false, agentName, false);
+
+        Build build = buildJob(job).shouldSucceed();
+        build.open();
+
+        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/pmd.xml", true, agentName,
+                false);
+        build = buildJob(job).shouldBeUnstable();
+        build.open();
+
+        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(2);
+        assertThat(pmd.getResetQualityGateButton()).isNotNull();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        new WebDriverWait(driver, 5).until(ExpectedConditions.invisibilityOf(pmd.getResetQualityGateButton()));
+
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(2);
+        assertThat(pmd.getResetQualityGateButton()).isNull();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        jenkins.restart();
+        build = job.getLastBuild().shouldBeUnstable();
+        build.open();
+
+        pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(2);
+        assertThat(pmd.getResetQualityGateButton()).isNull();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true, agentName,
+                true);
+        build = buildJob(job).shouldSucceed();
+        build.open();
+
+        pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 3 warnings");
+        assertThat(pmd.getNewSize()).isEqualTo(3);
+        assertThat(pmd.getResetQualityGateButton()).isNull();
+        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
+        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        //Todo: Mb more checks on the mail
+        //Todo: Move email address and stuff to some variable
+        try {
+            mail.assertMail(Pattern.compile("^Modified "),
+                    "dev@example.com",
+                    Pattern.compile("\nwith amendment$"));
+        }
+        catch (MessagingException | IOException e) {
+            throw new AssertionError("Error while assert mail.", e);
+        }
+    }
+
     /**
      * Credentials to access the docker container. The credentials are stored with the specified ID and use the provided
      * SSH key. Use the following annotation on your test case to use the specified docker container as git server or
