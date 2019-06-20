@@ -112,34 +112,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Inject
     private MailService mail;
 
-    /**
-     * TODO: Remove before branch gets merged into master. Test exists only for testing purpose.
-     */
-    @Test
-    public void mailServiceTest() {
-        mail.setup(jenkins);
-
-        FreeStyleJob job = jenkins.jobs.create();
-        job.configure();
-        job.addShellStep("false");
-        EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
-        pub.subject.set("Modified $DEFAULT_SUBJECT");
-        pub.setRecipient("dev@example.com");
-        pub.body.set("$DEFAULT_CONTENT\nwith amendment");
-        job.save();
-
-        Build b = job.startBuild().shouldFail();
-
-        try {
-            mail.assertMail(Pattern.compile("^Modified "),
-                    "dev@example.com",
-                    Pattern.compile("\nwith amendment$"));
-        }
-        catch (MessagingException | IOException e) {
-            throw new AssertionError("Error while assert mail.", e);
-        }
-    }
-
     private void logoutUser() {
         jenkins.logout();
     }
@@ -166,16 +138,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         });
     }
 
-    /**
-     * TODO: Remove before branch gets merged into master. Test exists only for testing purpose.
-     */
-    @Test
-    public void loginTest() {
-        configureSecurity();
-        loginAsAdmin();
-        jenkins.restart();
-    }
-
     private void configureBuildErrorMailForJob(final FreeStyleJob job) {
         //job.configure(() -> {
          //   EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
@@ -193,6 +155,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.save();
     }
 
+    //Todo: Check JavaDoc
     /**
      * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
      * rebuild will reach the quality gate again. And checks that readOnly users are now allowed to trigger reset the
@@ -212,7 +175,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         agent.setLabels("agent");
         agent.save();
         agent.waitUntilOnline();
-        
+
         mail.setup(jenkins);
 
         assertThat(agent.isOnline()).isTrue();
@@ -306,6 +269,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         }
     }
 
+    //Todo: Check JavaDoc
     /**
      * Tests that quality gate is reached and shown in build history. And checks, that previous issues are kept when no
      * reset is triggered. Although tests if a Mail is sent to the Job Admin when the build fails.
@@ -432,6 +396,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         return job;
     }
 
+    //Todo: Check JavaDoc
     /**
      * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
      * rebuild will reach the quality gate again.
