@@ -75,8 +75,11 @@ import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
  * @author Arne Schöntag
  * @author Alexandra Wenzel
  * @author Nikolai Wohlgemuth
+ * @author Colin Kaschel
+ * @author Nils Engelbrecht
  */
 @WithPlugins("warnings-ng")
+@SuppressWarnings("ClassFanOutComplexity")
 public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String WARNINGS_PLUGIN_PREFIX = "/warnings_ng_plugin/";
 
