@@ -172,8 +172,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs workflow-job twice with restart in between builds without resetting quality gate and tests
-     * persistence of summary.
+     * Runs workflow-job twice with restart in between builds without resetting quality gate and tests persistence of
+     * summary.
      */
     @Test
     public void shouldDisplayMoreWarningsOnSecondBuildOfWorkflowJob() {
@@ -320,7 +320,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
             assertThat(agent.isOnline()).isTrue();
             return agent;
-        } catch (Exception e) {
+        }
+        catch (Exception e) {
             throw new AssertionError();
         }
     }
@@ -343,7 +344,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         Mailtrap mail;
         if (MAILTRAP_USE_CUSTOM_CREDENTIALS) {
             mail = new Mailtrap(MAILTRAP_MAILBOX, MAILTRAP_PASSWORD, MAILTRAP_TOKEN, MAILTRAP_INBOX);
-        } else {
+        }
+        else {
             mail = new Mailtrap();
         }
         mail.setup(jenkins);
@@ -371,7 +373,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                         Pattern.compile(".* - Build #2"),
                         MAIL_RECIPIENT,
                         Pattern.compile("build: #2\nanalysis issues count: 3"));
-            } catch (Exception e) {
+            }
+            catch (Exception e) {
                 throw new AssertionError(e.getMessage());
             }
         }
@@ -742,7 +745,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     private void configureWorkflowJobWithResource(final WorkflowJob job, final String fileName,
-                                                  final boolean activateMailer, final String fingerprint) {
+            final boolean activateMailer, final String fingerprint) {
         assertThat(fileName).isNotNull();
         job.configure();
         String checkstyle = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + fileName);
@@ -1037,13 +1040,17 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Creates and builds a FreestyleJob for a specific static analysis tool.
      *
-     * @param toolName        the name of the tool
-     * @param configuration   the configuration steps for the static analysis tool
-     * @param resourcesToCopy the resources which shall be copied to the workspace
+     * @param toolName
+     *         the name of the tool
+     * @param configuration
+     *         the configuration steps for the static analysis tool
+     * @param resourcesToCopy
+     *         the resources which shall be copied to the workspace
+     *
      * @return the finished build
      */
     private Build createAndBuildFreeStyleJob(final String toolName, final Consumer<StaticAnalysisTool> configuration,
-                                             final String... resourcesToCopy) {
+            final String... resourcesToCopy) {
         FreeStyleJob job = createFreeStyleJob(toolName, configuration, resourcesToCopy);
 
         return buildJob(job);
@@ -1052,13 +1059,17 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Creates a FreestyleJob for a specific static analysis tool.
      *
-     * @param toolName        the name of the tool
-     * @param configuration   the configuration steps for the static analysis tool
-     * @param resourcesToCopy the resources which shall be copied to the workspace
+     * @param toolName
+     *         the name of the tool
+     * @param configuration
+     *         the configuration steps for the static analysis tool
+     * @param resourcesToCopy
+     *         the resources which shall be copied to the workspace
+     *
      * @return the created job
      */
     private FreeStyleJob createFreeStyleJob(final String toolName, final Consumer<StaticAnalysisTool> configuration,
-                                            final String... resourcesToCopy) {
+            final String... resourcesToCopy) {
         FreeStyleJob job = createFreeStyleJob(resourcesToCopy);
         IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class);
         recorder.setTool(toolName, configuration);
@@ -1069,8 +1080,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Opens the AnalysisResult and returns the corresponding PageObject representing it.
      *
-     * @param build the build
-     * @param id    the id of the static analysis tool
+     * @param build
+     *         the build
+     * @param id
+     *         the id of the static analysis tool
+     *
      * @return the PageObject representing the AnalysisResult
      */
     private AnalysisResult openAnalysisResult(final Build build, final String id) {
@@ -1116,7 +1130,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Finds a resource with the given name and returns the content (decoded with UTF-8) as String.
      *
-     * @param fileName name of the desired resource
+     * @param fileName
+     *         name of the desired resource
+     *
      * @return the content represented as {@link String}
      */
     private String toString(final String fileName) {
@@ -1140,13 +1156,16 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * substituted for {@code '.'} (<tt>'&#92;u002e'</tt>).</li>
      * </ul>
      *
-     * @param fileName name of the desired resource
+     * @param fileName
+     *         name of the desired resource
+     *
      * @return the content represented by a byte array
      */
     private byte[] readAllBytes(final String fileName) {
         try {
             return Files.readAllBytes(getPath(fileName));
-        } catch (IOException | URISyntaxException e) {
+        }
+        catch (IOException | URISyntaxException e) {
             throw new AssertionError("Can't read resource " + fileName, e);
         }
     }
