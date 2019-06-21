@@ -24,7 +24,6 @@ import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
 import org.jenkinsci.test.acceptance.plugins.email_ext.EmailExtPublisher;
 import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixAuthorizationStrategy;
-import org.jenkinsci.test.acceptance.plugins.matrix_auth.ProjectBasedMatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
 import org.jenkinsci.test.acceptance.plugins.mock_security_realm.MockSecurityRealm;
@@ -132,8 +131,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
 
     /**
-     * Runs two consecutive freestyle-jobs with restart in between runs without resetting quality gate and tests
-     * persistence of summary.
+     * Runs freestyle-job twice with restart in between builds without resetting quality gate and tests persistence of
+     * summary.
      */
     @Test
     public void shouldDisplayMoreWarningsOnSecondBuildOfFreestyleJob() {
@@ -173,12 +172,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs two consecutive freestyle-jobs with restart in between runs, tests persistence of summary and tests
-     * functionality of quality gate reset.
+     * Runs freestyle-job twice with restart in between builds, tests persistence of summary and tests functionality of
+     * quality gate reset.
      */
     @Test
     public void shouldDisplayNewWarningsWhenPreviouslyQualityGateResetOfFreestyleJob() {
-
         Mailtrap mail = configureMailTrapAccount();
         Slave agent = createAgent();
         FreeStyleJob job = createFreeStyleJobWithQualityGates(agent, "build_status_test/build_01");
@@ -221,13 +219,13 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs two consecutive workflow-jobs with restart in between runs, tests persistence of summary and tests
-     * functionality of quality gate reset.
+     * Runs workflow-job twice with restart in between builds, tests persistence of summary and tests functionality of
+     * quality gate reset.
      */
     @Test
     public void shouldDisplayNewWarningsWhenPreviouslyQualityGateResetOfWorkflowJob() {
         Mailtrap mail = configureMailTrapAccount();
-        Slave agent = createAgent();
+        createAgent();
         WorkflowJob job = jenkins.getJobs().create(WorkflowJob.class);
         configureWorkflowJobWithResource(job,
                 "build_status_test/build_01/checkstyle-result.xml",
@@ -350,8 +348,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Test ensures that quality gate reset button is always visible when logged in as admin
-     * and is only visible to the user which created job.
+     * Test ensures that quality gate reset button is always visible when logged in as admin and is only visible to the
+     * user which created job.
      */
     @Test
     @WithPlugins({"mock-security-realm", "matrix-auth@2.3"})
@@ -392,7 +390,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             MockSecurityRealm realm = security.useRealm(MockSecurityRealm.class);
             realm.configure(admin, user, priviledgedUser);
             MatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(MatrixAuthorizationStrategy.class);
-            //ProjectBasedMatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(ProjectBasedMatrixAuthorizationStrategy.class);
             mas.addUser(admin).admin();
             mas.addUser(user).developer().off(ITEM_CONFIGURE);
             mas.addUser(priviledgedUser).developer();
