@@ -23,7 +23,6 @@ import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
 import org.jenkinsci.test.acceptance.plugins.email_ext.EmailExtPublisher;
-import org.jenkinsci.test.acceptance.plugins.mailer.Mailer;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
@@ -117,13 +116,15 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String MAILTRAP_INBOX = "631796";
     private static final String MAILTRAP_PASSWORD = "4d4a6fb60e0760";
     private static final String MAIL_RECIPIENT = "dev@example.com";
+    private static final String MAIL_SUBJECT = "${JOB_NAME} - Build #${BUILD_NUMBER}";
+    private static final String SLAVE_AGENT_LABEL = "agent";
 
     @Inject
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
 
     /**
-     * Runs two consecutive freestyle-jobs with restart in between runs without resetting quality gate
-     * and tests persistence of summary.
+     * Runs two consecutive freestyle-jobs with restart in between runs without resetting quality gate and tests
+     * persistence of summary.
      */
     @Test
     public void shouldDisplayMoreWarningsOnSecondBuildOfFreestyleJob() {
@@ -210,13 +211,61 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertMailIfEnabled(mail);
     }
 
+    /**
+     * Runs two consecutive workflow-jobs with restart in between runs, tests persistence of summary and tests
+     * functionality of quality gate reset.
+     */
+    @Test
+    public void shouldDisplayNewWarningsWhenPreviouslyQualityGateResetOfWorkflowJob() {
+        Mailtrap mail = configureMailTrapAccount();
+        Slave agent = createAgent();
+        WorkflowJob job = jenkins.getJobs().create(WorkflowJob.class);
+        configureWorkflowJobWithResource(job,
+                "build_status_test/build_01/checkstyle-result.xml",
+                false, mail.fingerprint);
+
+        Build referenceBuild = buildJob(job);
+        referenceBuild.open();
+        AnalysisSummary summary = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
+        assertThat(summary).isDisplayed();
+        assertThat(summary).hasTitleText("CheckStyle: One warning");
+        assertThat(summary).hasNewSize(0);
+        assertThat(summary).hasFixedSize(0);
+        assertThat(summary).hasReferenceBuild(0);
+        assertThat(summary.qualityGateResetButtonIsVisible()).isTrue();
+
+        summary.resetQualityGate();
+
+        referenceBuild.open();
+        summary = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
+        assertThat(summary.qualityGateResetButtonIsVisible()).isFalse();
+
+        int summaryHashBeforeRestart = summary.hashCode();
+        restartAndAssertPersistenceOfSummary(referenceBuild, summaryHashBeforeRestart);
+
+        configureWorkflowJobWithResource(job,
+                "build_status_test/build_02/checkstyle-result.xml",
+                MAILTRAP_ENABLED, mail.fingerprint);
+
+        Build build = buildJob(job);
+        build.open();
+        summary = new AnalysisSummary(build, CHECKSTYLE_ID);
+        assertThat(summary).isDisplayed();
+        assertThat(summary).hasTitleText("CheckStyle: 3 warnings");
+        assertThat(summary).hasNewSize(3);
+        assertThat(summary).hasFixedSize(1);
+        assertThat(summary).hasReferenceBuild(1);
+        assertThat(summary.qualityGateResetButtonIsVisible()).isTrue();
+        assertMailIfEnabled(mail);
+    }
+
     @SuppressWarnings("illegalcatch")
     private Slave createAgent() {
         SlaveController controller = new LocalSlaveController();
         try {
             Slave agent = controller.install(jenkins).get();
             agent.configure();
-            agent.setLabels("agent");
+            agent.setLabels(SLAVE_AGENT_LABEL);
             agent.save();
             agent.waitUntilOnline();
 
@@ -251,15 +300,16 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             mail = new Mailtrap();
         }
         mail.setup(jenkins);
+
         return mail;
     }
 
-    private void addMailPublisherToJobIfEnabled(final FreeStyleJob job) {
+    private void addMailPublisherToJobIfEnabled(final Job job) {
         if (MAILTRAP_ENABLED) {
             job.addShellStep("false"); // in order to force sending of mail
             EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
             pub.setRecipient(MAIL_RECIPIENT);
-            pub.subject.set("$DEFAULT_SUBJECT");
+            pub.subject.set(MAIL_SUBJECT);
             pub.body.set("build: #${BUILD_NUMBER}\n"
                     + "analysis issues count: ${ANALYSIS_ISSUES_COUNT}");
             pub.ensureAdvancedOpened();
@@ -271,10 +321,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         if (MAILTRAP_ENABLED) {
             try {
                 mail.assertMail(
-                        Pattern.compile(".* - Build # 2 - Failure!"),
+                        Pattern.compile(".* - Build #2"),
                         MAIL_RECIPIENT,
-                        Pattern.compile("build: #2\n"
-                                + "analysis issues count: 3"));
+                        Pattern.compile("build: #2\nanalysis issues count: 3"));
             }
             catch (Exception e) {
                 throw new AssertionError(e.getMessage());
@@ -593,8 +642,34 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(issuesTable).hasSize(1);
     }
 
-    private void reconfigureJobWithResource(final FreeStyleJob job, final String fileName) {
+    private void reconfigureJobWithResource(final Job job, final String fileName) {
         job.configure(() -> job.copyResource(WARNINGS_PLUGIN_PREFIX + fileName));
+    }
+
+    private void configureWorkflowJobWithResource(final WorkflowJob job, final String fileName,
+            final boolean activateMailer, final String fingerprint) {
+        assertThat(fileName).isNotNull();
+        job.configure();
+        String checkstyle = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + fileName);
+
+        String script = "node('" + SLAVE_AGENT_LABEL + "') {\n"
+                + checkstyle.replace("\\", "\\\\")
+                + "recordIssues tool: checkStyle(pattern: '**/*.xml')"
+                + ", qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]]\n";
+
+        if (activateMailer) {
+            // fingerprint is equal to replyTo and needs to be added here in order
+            // to pass filter that determines whether mail belongs to this test or not
+            script = script + "emailext body: '''build: #${BUILD_NUMBER}\n"
+                    + "analysis issues count: ${ANALYSIS_ISSUES_COUNT}''', recipientProviders: [developers()]"
+                    + ", subject: '" + MAIL_SUBJECT + "', to: '" + MAIL_RECIPIENT + "'"
+                    + ", replyTo: '" + fingerprint + "'\n";
+        }
+
+        script = script + "}\n";
+        job.script.set(script);
+        job.sandbox.check(false);
+        job.save();
     }
 
     private IssuesRecorder addRecorderWith3Tools(final FreeStyleJob job) {
