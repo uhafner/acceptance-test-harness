@@ -23,8 +23,11 @@ import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
 import org.jenkinsci.test.acceptance.plugins.email_ext.EmailExtPublisher;
+import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixAuthorizationStrategy;
+import org.jenkinsci.test.acceptance.plugins.matrix_auth.ProjectBasedMatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
+import org.jenkinsci.test.acceptance.plugins.mock_security_realm.MockSecurityRealm;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AbstractNonDetailsIssuesTableRow;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AnalysisResult;
@@ -47,6 +50,7 @@ import org.jenkinsci.test.acceptance.po.Build;
 import org.jenkinsci.test.acceptance.po.Build.Result;
 import org.jenkinsci.test.acceptance.po.DumbSlave;
 import org.jenkinsci.test.acceptance.po.FreeStyleJob;
+import org.jenkinsci.test.acceptance.po.GlobalSecurityConfig;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
@@ -54,6 +58,7 @@ import org.jenkinsci.test.acceptance.slave.LocalSlaveController;
 import org.jenkinsci.test.acceptance.slave.SlaveController;
 import org.jenkinsci.test.acceptance.utils.mail.Mailtrap;
 
+import static org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixRow.*;
 import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
 
 /**
@@ -117,7 +122,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String MAILTRAP_PASSWORD = "4d4a6fb60e0760";
     private static final String MAIL_RECIPIENT = "dev@example.com";
     private static final String MAIL_SUBJECT = "${JOB_NAME} - Build #${BUILD_NUMBER}";
+
     private static final String SLAVE_AGENT_LABEL = "agent";
+    private static final String SECURITY_ADMIN_USER = "admin";
+    private static final String SECURITY_NORMAL_USER = "user";
+    private static final String SECURITY_PRIVILEDGED_USER = "priviledged";
 
     @Inject
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
@@ -338,6 +347,56 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         AnalysisSummary summaryAfterRestart = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
         int summaryHashAfterRestart = summaryAfterRestart.hashCode();
         assertThat(summaryHashBeforeRestart).isEqualTo(summaryHashAfterRestart);
+    }
+
+    /**
+     * Test ensures that quality gate reset button is always visible when logged in as admin
+     * and is only visible to the user which created job.
+     */
+    @Test
+    @WithPlugins({"mock-security-realm", "matrix-auth@2.3"})
+    public void resetQualityGateButtonShouldBeHiddenForUserButVisibleForAdmin() {
+        Slave agent = createAgent();
+        configureSecurity(SECURITY_ADMIN_USER, SECURITY_NORMAL_USER, SECURITY_PRIVILEDGED_USER);
+        loginAs(SECURITY_ADMIN_USER);
+        FreeStyleJob job = createFreeStyleJobWithQualityGates(agent, "build_status_test/build_01");
+        job.save();
+
+        loginAs(SECURITY_NORMAL_USER);
+        Build referenceBuild = buildJob(job).shouldBe(Result.UNSTABLE);
+        referenceBuild.open();
+        AnalysisSummary summary = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
+        assertThat(summary).isDisplayed();
+        assertThat(summary.qualityGateResetButtonIsVisible()).isFalse();
+
+        loginAs(SECURITY_PRIVILEDGED_USER);
+        referenceBuild.open();
+        summary = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
+        assertThat(summary).isDisplayed();
+        assertThat(summary.qualityGateResetButtonIsVisible()).isTrue();
+
+        loginAs(SECURITY_ADMIN_USER);
+        referenceBuild.open();
+        summary = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
+        assertThat(summary).isDisplayed();
+        assertThat(summary.qualityGateResetButtonIsVisible()).isTrue();
+    }
+
+    private void loginAs(final String user) {
+        jenkins.login().doLogin(user);
+    }
+
+    private void configureSecurity(final String admin, final String user, final String priviledgedUser) {
+        GlobalSecurityConfig security = new GlobalSecurityConfig(jenkins);
+        security.configure(() -> {
+            MockSecurityRealm realm = security.useRealm(MockSecurityRealm.class);
+            realm.configure(admin, user, priviledgedUser);
+            MatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(MatrixAuthorizationStrategy.class);
+            //ProjectBasedMatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(ProjectBasedMatrixAuthorizationStrategy.class);
+            mas.addUser(admin).admin();
+            mas.addUser(user).developer().off(ITEM_CONFIGURE);
+            mas.addUser(priviledgedUser).developer();
+        });
     }
 
     /**
