@@ -125,7 +125,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String SLAVE_AGENT_LABEL = "agent";
     private static final String SECURITY_ADMIN_USER = "admin";
     private static final String SECURITY_NORMAL_USER = "user";
-    private static final String SECURITY_PRIVILEDGED_USER = "priviledged";
+    private static final String SECURITY_PRIVILEGED_USER = "privileged";
 
     @Inject
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
@@ -355,7 +355,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @WithPlugins({"mock-security-realm", "matrix-auth@2.3"})
     public void resetQualityGateButtonShouldBeHiddenForUserButVisibleForAdmin() {
         Slave agent = createAgent();
-        configureSecurity(SECURITY_ADMIN_USER, SECURITY_NORMAL_USER, SECURITY_PRIVILEDGED_USER);
+        configureSecurity(SECURITY_ADMIN_USER, SECURITY_NORMAL_USER, SECURITY_PRIVILEGED_USER);
         loginAs(SECURITY_ADMIN_USER);
         FreeStyleJob job = createFreeStyleJobWithQualityGates(agent, "build_status_test/build_01");
         job.save();
@@ -367,7 +367,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(summary).isDisplayed();
         assertThat(summary.qualityGateResetButtonIsVisible()).isFalse();
 
-        loginAs(SECURITY_PRIVILEDGED_USER);
+        loginAs(SECURITY_PRIVILEGED_USER);
         referenceBuild.open();
         summary = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
         assertThat(summary).isDisplayed();
