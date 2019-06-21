@@ -426,15 +426,15 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         jenkins.login().doLogin(user);
     }
 
-    private void configureSecurity(final String admin, final String user, final String priviledgedUser) {
+    private void configureSecurity(final String admin, final String user, final String privilegedUser) {
         GlobalSecurityConfig security = new GlobalSecurityConfig(jenkins);
         security.configure(() -> {
             MockSecurityRealm realm = security.useRealm(MockSecurityRealm.class);
-            realm.configure(admin, user, priviledgedUser);
+            realm.configure(admin, user, privilegedUser);
             MatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(MatrixAuthorizationStrategy.class);
             mas.addUser(admin).admin();
             mas.addUser(user).developer().off(ITEM_CONFIGURE);
-            mas.addUser(priviledgedUser).developer();
+            mas.addUser(privilegedUser).developer();
         });
     }
 
