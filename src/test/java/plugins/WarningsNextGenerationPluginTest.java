@@ -426,7 +426,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             throw new AssertionError(exception);
         }
     }
-    
+
     /**
      * Runs a pipeline with checkstyle and pmd. Verifies the expansion of tokens with the token-macro plugin.
      */
