@@ -25,8 +25,10 @@ import org.jenkinsci.test.acceptance.junit.AbstractJUnitTest;
 import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
+import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
+import org.jenkinsci.test.acceptance.plugins.mock_security_realm.MockSecurityRealm;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AbstractNonDetailsIssuesTableRow;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AnalysisResult;
@@ -49,6 +51,7 @@ import org.jenkinsci.test.acceptance.po.Build;
 import org.jenkinsci.test.acceptance.po.Build.Result;
 import org.jenkinsci.test.acceptance.po.DumbSlave;
 import org.jenkinsci.test.acceptance.po.FreeStyleJob;
+import org.jenkinsci.test.acceptance.po.GlobalSecurityConfig;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
@@ -268,21 +271,15 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Tests the build overview page by running two builds that aggregate the three different tools into a single
-     * result. Checks the contents of the result summary.
+     * Tests that a build with a quality gate is shown as unstable if it surpasses the set threshold. This should work
+     * with multiple builds too and persist after restarting jenkins.
      */
     @Test
     public void should_fail_quality_gate_for_freestyle_project() {
-        // TODO: 3 Builds (no warning initial)
         Slave agent = createDumbAgent();
         FreeStyleJob job = createFreeStyleJobForAgent(agent);
 
-        IssuesRecorder issuesRecorder = job.addPublisher(IssuesRecorder.class, recorder -> {
-            recorder.setTool("CheckStyle");
-            recorder.setEnabledForFailure(true);
-        });
-
-        issuesRecorder.addQualityGateConfiguration(4, QualityGateType.NEW, false);
+        addIssueRecorderWithQualityGate(job);
         job.save();
 
         Build build = buildJob(job).shouldBe(Result.SUCCESS);
@@ -298,18 +295,60 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.SUCCESS);
         assertThat(analysisSummary).hasNewSize(3);
         assertThat(analysisSummary).hasFixedSize(0);
-
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isFalse();
 
         jenkins.restart();
 
         reconfigureJobWithResource(job, "quality_gate/build_02");
-        build = buildJob(job).shouldBe(Result.FAILURE);
+        build = buildJob(job).shouldBe(Result.UNSTABLE);
         build.open();
         analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
-        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.UNSTABLE);
         assertThat(analysisSummary).hasNewSize(5);
         assertThat(analysisSummary).hasFixedSize(1);
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
 
+    }
+
+
+    /**
+     * Tests that a build with a quality gate is shown as unstable if it surpasses the set threshold. Additionally tests
+     * if the reset quality gate button works as expected.
+     */
+    @Test
+    public void should_reset_quality_gate_for_freestyle_project() {
+        Slave agent = createDumbAgent();
+        FreeStyleJob job = createFreeStyleJobForAgent(agent);
+
+        addIssueRecorderWithQualityGate(job);
+        job.save();
+
+        Build build = buildJob(job).shouldBe(Result.SUCCESS);
+        build.open();
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID)).hasQualityGateResult(QualityGateResult.SUCCESS);
+
+        jenkins.restart();
+
+        reconfigureJobWithResource(job, "quality_gate/build_01");
+        build = buildJob(job).shouldBe(Result.UNSTABLE);
+        build.open();
+        AnalysisSummary analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.UNSTABLE);
+        assertThat(analysisSummary).hasNewSize(3);
+        assertThat(analysisSummary).hasFixedSize(0);
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
+        analysisSummary.resetQualityGateButtonClick();
+
+        jenkins.restart();
+
+        reconfigureJobWithResource(job, "quality_gate/build_02");
+        build = buildJob(job).shouldBe(Result.UNSTABLE);
+        build.open();
+        analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.UNSTABLE);
+        assertThat(analysisSummary).hasNewSize(5);
+        assertThat(analysisSummary).hasFixedSize(1);
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
     }
 
     /**
@@ -319,6 +358,15 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     public void should_change_build_result_if_quality_gate_is_not_passed() {
         runJobWithQualityGate(false);
         runJobWithQualityGate(true);
+    }
+
+    private void addIssueRecorderWithQualityGate(FreeStyleJob job) {
+        IssuesRecorder issuesRecorder = job.addPublisher(IssuesRecorder.class, recorder -> {
+            recorder.setTool("CheckStyle");
+            recorder.setEnabledForFailure(true);
+        });
+
+        issuesRecorder.addQualityGateConfiguration(2, QualityGateType.TOTAL, true);
     }
 
     private Slave createDumbAgent() {
@@ -530,8 +578,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs a freestyle job that publishes checkstyle warnings. Verifies the content of the info and error
-     * log view.
+     * Runs a freestyle job that publishes checkstyle warnings. Verifies the content of the info and error log view.
      */
     @Test
     public void should_show_info_and_error_messages_in_freestyle_job() {
@@ -547,8 +594,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs a pipeline that publishes checkstyle warnings. Verifies the content of the info and error
-     * log view.
+     * Runs a pipeline that publishes checkstyle warnings. Verifies the content of the info and error log view.
      */
     @Test
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
@@ -593,7 +639,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Creates and builds a maven job and verifies that all warnings are shown in the summary and details views.
      */
-    @Test @WithPlugins("maven-plugin")
+    @Test
+    @WithPlugins("maven-plugin")
     public void should_show_maven_warnings_in_maven_project() {
         MavenModuleSet job = createMavenProject();
         copyResourceFilesToWorkspace(job, SOURCE_VIEW_FOLDER + "pom.xml");
@@ -633,7 +680,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Verifies that package and namespace names are resolved.
      */
-    @Test @WithPlugins("maven-plugin")
+    @Test
+    @WithPlugins("maven-plugin")
     public void should_resolve_packages_and_namespaces() {
         MavenModuleSet job = createMavenProject();
         job.copyDir(job.resource(SOURCE_VIEW_FOLDER));
@@ -683,7 +731,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Verifies that warnings can be parsed on a agent as well.
      */
-    @Test @WithDocker @WithPlugins("ssh-slaves")
+    @Test
+    @WithDocker
+    @WithPlugins("ssh-slaves")
     @WithCredentials(credentialType = WithCredentials.SSH_USERNAME_PRIVATE_KEY, values = {CREDENTIALS_ID, CREDENTIALS_KEY})
     public void should_parse_warnings_on_agent() {
         DumbSlave dockerAgent = createDockerAgent();
@@ -705,10 +755,12 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs a pipeline and sends an email.
+     * Runs a pipeline job and sends an email if the quality gate is surpassed.
      *
      * @throws IOException
+     *         if Mail IO failed
      * @throws MessagingException
+     *         if Mail receiving failed
      */
     @Test
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
@@ -732,7 +784,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(analysisSummary).hasNewSize(0);
         assertThat(analysisSummary).hasFixedSize(0);
         assertThat(analysisSummary).hasReferenceBuild(0);
-        assertThat(analysisSummary.resetQualityGateButtonIsVisible()); // TODO .isTrue() reset button visible bot not found by the method. isTrue() check fails!
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
 
         assertMailForBuild(build, mailTrap, 3);
 
@@ -749,27 +801,29 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(analysisSummary).hasNewSize(0);
         assertThat(analysisSummary).hasFixedSize(0);
         assertThat(analysisSummary).hasReferenceBuild(0);
-        assertThat(analysisSummary.resetQualityGateButtonIsVisible()); // TODO .isTrue(); reset button visible bot not found by the method. isTrue() check fails!
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
 
         assertMailForBuild(build, mailTrap, 6);
     }
 
-    private void assertMailForBuild(final Build build, final Mailtrap mailTrap, final int numberOfIssues) throws IOException, MessagingException {
+    private void assertMailForBuild(final Build build, final Mailtrap mailTrap, final int numberOfIssues)
+            throws IOException, MessagingException {
         mailTrap.assertMail(
                 Pattern.compile(build.getName().replace(" ", ": ")),
                 MAIL_ADDRESS,
                 Pattern.compile("build: #" + build.getNumber() + "\nanalysis issues count: " + numberOfIssues));
     }
 
-    private void createPipelineJob(final WorkflowJob job, final String slave_agent, final String resource, final Mailtrap mail) {
+    private void createPipelineJob(final WorkflowJob job, final String slave_agent, final String resource,
+            final Mailtrap mail) {
         job.configure();
 
         String script = "node('" + slave_agent + "') {\n"
-                        + createResourceFromFilename(job, resource)
-                        + "recordIssues enabledForFailure: true, tool: checkStyle(pattern: '**/*.xml'), sourceCodeEncoding: 'UTF-8'"
-                        + createQualityGateScript(1, true)
-                        + (mail != null ? createMailScript(mail.fingerprint) : "")
-                        + "}\n";
+                + createResourceFromFilename(job, resource)
+                + "recordIssues enabledForFailure: true, tool: checkStyle(pattern: '**/*.xml'), sourceCodeEncoding: 'UTF-8'"
+                + createQualityGateScript(1, true)
+                + (mail != null ? createMailScript(mail.fingerprint) : "")
+                + "}\n";
 
         job.script.set(script);
         job.sandbox.check(false);
