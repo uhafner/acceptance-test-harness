@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<checkstyle version="5.0">
+  <file name="RemoteLauncher.java">
+    <error line="5" column="2" severity="error" message="Parameter connection should be final."
+           source="com.puppycrawl.tools.checkstyle.checks.FinalParametersCheck"/>
+  </file>
+</checkstyle>

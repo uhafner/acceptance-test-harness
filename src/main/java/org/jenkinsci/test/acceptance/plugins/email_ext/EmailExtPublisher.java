@@ -32,6 +32,16 @@ public class EmailExtPublisher extends AbstractStep implements PostBuildStep {
         }
     }
 
+    public void addTrigger(String title) {
+        ensureAdvancedOpened();
+        control("hetero-list-add[project_triggers]").selectDropdownMenu(title);
+    }
+
+    public void removefirstTrigger(String title) {
+        ensureAdvancedOpened();
+        control("hetero-list-remove[project_triggers]").clickButton("Remove Trigger");
+    }
+
     public void ensureAdvancedOpened() {
         if (!advacedOpened) {
             control("advanced-button").click();
