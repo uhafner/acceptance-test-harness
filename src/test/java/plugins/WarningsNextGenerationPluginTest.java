@@ -152,7 +152,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * Tests that a quality gate result is reached and shown in build history, even after a jenkins restart. Permissions
      * are set up to test, that only users with appropriate rules are able to reset the quality gate. Furthermore it is
      * checked, that resetting the quality gate resets the newly found issues for next build and the Developers receive
-     * mail on failed builds.
+     * mail on failed builds. In this Test a Freestyle Job is used.
      */
     @Test
     public void shouldFreeStyleJobReachQualityGateRebuildReachAgain() {
@@ -266,7 +266,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * Tests that a quality gate result is reached and shown in build history, even after a jenkins restart. Permissions
      * are set up to test, that only users with appropriate rules are able to reset the quality gate. Furthermore it is
      * checked, that a quality gate, which hasn't been reset, keeps the issues found. Additionaly a mail is sent to the
-     * Developers when the build fails.
+     * Developers when the build fails. In this Test a Freestyle Job is used.
      */
     @Test
     public void shouldFreeStyleJobReachQualityGateRebuildReachAgainNoReset() {
@@ -408,11 +408,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         return job;
     }
 
-    //Todo: Check JavaDoc
-
     /**
-     * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
-     * rebuild will reach the quality gate again.
+     * Tests that a quality gate result is reached and shown in build history, even after a jenkins restart. Permissions
+     * are set up to test, that only users with appropriate rules are able to reset the quality gate. Furthermore it is
+     * checked, that resetting the quality gate resets the newly found issues for next build and the Developers receive
+     * mail on new quality gate issues. In this Test a Pipeline Job is used.
      */
     @Test
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
@@ -503,11 +503,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         }
     }
 
-    //Todo: Java Doc
-
     /**
-     * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
-     * rebuild will reach the quality gate again.
+     * Tests that a quality gate result is reached and shown in build history, even after a jenkins restart. Permissions
+     * are set up to test, that only users with appropriate rules are able to reset the quality gate. Furthermore it is
+     * checked, that a quality gate, which hasn't been reset, keeps the issues found. Additionally a mail is sent to the
+     * Developers when new quality gates issues occur. In this Test a Pipeline Job is used.
      */
     @Test
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
