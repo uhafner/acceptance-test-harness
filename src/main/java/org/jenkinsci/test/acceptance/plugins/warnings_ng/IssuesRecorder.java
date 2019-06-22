@@ -2,9 +2,6 @@ package org.jenkinsci.test.acceptance.plugins.warnings_ng;
 
 import java.util.function.Consumer;
 
-import org.openqa.selenium.By;
-import org.openqa.selenium.support.ui.Select;
-
 import org.jenkinsci.test.acceptance.po.AbstractStep;
 import org.jenkinsci.test.acceptance.po.Control;
 import org.jenkinsci.test.acceptance.po.Describable;
@@ -30,6 +27,8 @@ public class IssuesRecorder extends AbstractStep implements PostBuildStep {
     private Control referenceJobField = control("referenceJob");
     private Control aggregatingResultsCheckBox = control("aggregatingResults");
     private Control sourceCodeEncoding = control("sourceCodeEncoding");
+    private Control ignoreFailedBuilds = control("ignoreFailedBuilds");
+    private Control ignoreQualityGates = control("ignoreQualityGate");
 
     /**
      * Returns the repeatable add button for the specified property.
@@ -186,6 +185,31 @@ public class IssuesRecorder extends AbstractStep implements PostBuildStep {
 
         ignoreAnalysisResultCheckBox.check(isChecked);
     }
+
+    /**
+     * Enables or disables the checkbox 'ignore Failed Builds'.
+     *
+     * @param isChecked
+     *         determines if the checkbox should be checked or not
+     */
+    public void setIgnoreFailedBuilds(final boolean isChecked) {
+        openAdvancedOptions();
+
+        ignoreFailedBuilds.check(isChecked);
+    }
+
+    /**
+     * Enables or disables the checkbox 'ignore Failed Builds'.
+     *
+     * @param isChecked
+     *         determines if the checkbox should be checked or not
+     */
+    public void setIgnoreQualityGates(final boolean isChecked) {
+        openAdvancedOptions();
+
+        ignoreQualityGates.check(isChecked);
+    }
+
 
     /**
      * Enables or disables the checkbox 'overallResultMustBeSuccess'.

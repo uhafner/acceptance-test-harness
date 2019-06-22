@@ -1,6 +1,7 @@
 package plugins;
 
 import java.io.IOException;
+import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -13,11 +14,11 @@ import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
 import org.junit.Test;
+import org.openqa.selenium.By;
+import org.openqa.selenium.NoSuchElementException;
+import org.openqa.selenium.WebElement;
 
 import com.google.inject.Inject;
-import com.sun.scenario.effect.impl.sw.sse.SSEBlend_SRC_OUTPeer;
-
-import jdk.nashorn.tools.Shell;
 
 import org.jenkinsci.test.acceptance.docker.DockerContainerHolder;
 import org.jenkinsci.test.acceptance.docker.fixtures.JavaGitContainer;
@@ -119,7 +120,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      */
     @Test
     public void shouldVerifyQualityGate() throws ExecutionException, InterruptedException {
-
         SlaveController controller = new LocalSlaveController();
         Slave agent = controller.install(jenkins).get();
         agent.configure();
@@ -129,12 +129,15 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(agent.isOnline()).isTrue();
 
-        FreeStyleJob job = createFreeStyleJobForDockerAgent(agent, "issue_filter/checkstyle-result.xml");
+        FreeStyleJob job = createFreeStyleJobForDockerAgent(agent);
 
         job.addPublisher(IssuesRecorder.class, recorder -> {
             recorder.addTool("PMD");
             recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, false);
+            recorder.setIgnoreFailedBuilds(false);
+            recorder.setIgnoreQualityGates(true);
         });
+
 
 
         job.save();
@@ -151,11 +154,14 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         build = buildJob(job);
 
+        System.out.println("------------------CONSOLE OUTPUT 2------------------");
+        System.out.println(build.getConsole());
+        System.out.println("------------------CONSOLE END----------------------");
+
         assertThat(build.getConsole())
                 .contains("[PMD] Issues delta (vs. reference build): outstanding: 0, new: 1, fixed: 0")
                 .contains("[PMD] -> FAILED - Total number of issues (any severity): 1 - Quality QualityGate: 1")
                 .contains("[PMD] -> Some quality gates have been missed: overall result is FAILED")
-                .contains("Build step 'Record compiler warnings and static analysis results' changed build result to FAILURE")
                 .contains("Finished: FAILURE");
 
         jenkins.restart();
@@ -163,22 +169,102 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.configure();
         job.removeFirstBuildStep();
 
-
         reconfigureJobWithResource(job, "warningsFiles/2Warning/pmd.xml");
 
         build = buildJob(job);
 
+        System.out.println("------------------CONSOLE OUTPUT 223421343------------------");
+        System.out.println(build.getConsole());
+        System.out.println("------------------CONSOLE END----------------------");
+
         assertThat(build.getConsole())
                 .contains("[PMD] -> 0 resolved, 2 unresolved, 0 already resolved")
-                .contains("[PMD] Issues delta (vs. reference build): outstanding: 0, new: 2, fixed: 0")
+                .contains("[PMD] Issues delta (vs. reference build): outstanding: 1, new: 1, fixed: 0")
                 .contains("[PMD] -> FAILED - Total number of issues (any severity): 2 - Quality QualityGate: 1")
                 .contains("[PMD] -> Some quality gates have been missed: overall result is FAILED")
                 .contains("Build step 'Record compiler warnings and static analysis results' changed build result to FAILURE")
                 .contains("Finished: FAILURE");
+    }
 
-        System.out.println("------------------CONSOLE OUTPUT------------------");
+    /**
+     * Runs a Freestyle Job with java and quality gate multiple times and verifies the quality gate
+     *  Variante 2: Resetting of Quality Gate
+     */
+    @Test
+    public void shouldVerifyQualityGateWithQualityGateReset()
+            throws ExecutionException, InterruptedException, IOException {
+        SlaveController controller = new LocalSlaveController();
+        Slave agent = controller.install(jenkins).get();
+        agent.configure();
+        agent.setLabels("agent");
+        agent.save();
+        agent.waitUntilOnline();
+
+        assertThat(agent.isOnline()).isTrue();
+
+        FreeStyleJob job = createFreeStyleJobForDockerAgent(agent);
+
+        job.addPublisher(IssuesRecorder.class, recorder -> {
+            recorder.addTool("PMD");
+            recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, false);
+            recorder.setIgnoreFailedBuilds(false);
+            recorder.setIgnoreQualityGates(true);
+        });
+
+
+
+        job.save();
+
+        Build build = buildJob(job);
+
+
+        assertThat(build.getConsole())
+                .contains("[PMD] -> All quality gates have been passed")
+                .contains("[PMD] Created analysis result for 0 issues (found 0 new issues, fixed 0 issues)");
+
+
+        reconfigureJobWithResource(job, "warningsFiles/1Warning/pmd.xml");
+
+        build = buildJob(job);
+
+        System.out.println("------------------CONSOLE OUTPUT 2------------------");
         System.out.println(build.getConsole());
         System.out.println("------------------CONSOLE END----------------------");
+
+        assertThat(build.getConsole())
+                .contains("[PMD] Issues delta (vs. reference build): outstanding: 0, new: 1, fixed: 0")
+                .contains("[PMD] -> FAILED - Total number of issues (any severity): 1 - Quality QualityGate: 1")
+                .contains("[PMD] -> Some quality gates have been missed: overall result is FAILED")
+                .contains("Finished: FAILURE");
+
+        jenkins.restart();
+
+        job.configure();
+        job.removeFirstBuildStep();
+
+        reconfigureJobWithResource(job, "warningsFiles/2Warning/pmd.xml");
+
+        resetQualityGate(job, build);
+
+        build = buildJob(job);
+
+        System.out.println("------------------CONSOLE OUTPUT 223421343------------------");
+        System.out.println(build.getConsole());
+        System.out.println("------------------CONSOLE END----------------------");
+
+        assertThat(build.getConsole())
+                .contains("[PMD] -> 0 resolved, 2 unresolved, 0 already resolved")
+                .contains("[PMD] Issues delta (vs. reference build): outstanding: 1, new: 1, fixed: 0")
+                .contains("[PMD] -> FAILED - Total number of issues (any severity): 2 - Quality QualityGate: 1")
+                .contains("[PMD] -> Some quality gates have been missed: overall result is FAILED")
+                .contains("Build step 'Record compiler warnings and static analysis results' changed build result to FAILURE")
+                .contains("Finished: FAILURE");
+    }
+
+    private void resetQualityGate(final FreeStyleJob job, Build build) throws IOException {
+        visit(build.getStatusUrl());
+
+        find(By.xpath("//a[@href='pmd/resetReference']")).click();
     }
 
     /**
