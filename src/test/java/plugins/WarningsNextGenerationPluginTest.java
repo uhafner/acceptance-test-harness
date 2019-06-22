@@ -108,7 +108,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String NO_PACKAGE = "-";
 
     private static final String ADMIN_USERNAME = "admin";
-    //private static final String USER_USERNAME = "anonymous"; // TODO: Dont forget to remove
+    private static final String USER_USERNAME = "anonymous";
 
     @Inject
     private MailService mail;
@@ -129,26 +129,18 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             realm[0] = security.useRealm(JenkinsDatabaseSecurityRealm.class);
         });
 
-        // TODO: Workaround to access the realm created in lambda. Mb there is a better solution!
         realm[0].signup(ADMIN_USERNAME);
 
         security.configure(() -> {
             MatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(MatrixAuthorizationStrategy.class);
             mas.addUser(ADMIN_USERNAME).admin();
-            mas.getAnonymousUser().readOnly();
+            mas.getUser(USER_USERNAME).readOnly();
         });
     }
 
     private void configureBuildErrorMailForJob(final FreeStyleJob job) {
-        //job.configure(() -> {
-        //   EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
-        //  pub.subject.set("$DEFAULT_SUBJECT");
-        // pub.setRecipient("dev@example.com");
-        //  pub.body.set("$DEFAULT_CONTENT");
-        //});
-        //Todo: figure out how this can be replaced by lambda (see above)
         job.configure();
-        job.addShellStep("fail");
+        job.addShellStep("fail"); // Job needs to fail to send a mail - Other option: Extend Mail PageObject
         EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
         pub.subject.set("Modified $DEFAULT_SUBJECT");
         pub.setRecipient("dev@example.com");
@@ -156,12 +148,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.save();
     }
 
-    //Todo: Check JavaDoc
-
     /**
-     * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
-     * rebuild will reach the quality gate again. And checks that readOnly users are now allowed to trigger reset the
-     * quality gate while an admin is able to.
+     * Tests that a quality gate result is reached and shown in build history, even after a jenkins restart. Permissions
+     * are set up to test, that only users with appropriate rules are able to reset the quality gate. Furthermore it is
+     * checked, that resetting the quality gate resets the newly found issues for next build and the Developers receive
+     * mail on failed builds.
      */
     @Test
     public void shouldFreeStyleJobReachQualityGateRebuildReachAgain() {
@@ -271,11 +262,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         }
     }
 
-    //Todo: Check JavaDoc
-
     /**
-     * Tests that quality gate is reached and shown in build history. And checks, that previous issues are kept when no
-     * reset is triggered. Although tests if a Mail is sent to the Job Admin when the build fails.
+     * Tests that a quality gate result is reached and shown in build history, even after a jenkins restart. Permissions
+     * are set up to test, that only users with appropriate rules are able to reset the quality gate. Furthermore it is
+     * checked, that a quality gate, which hasn't been reset, keeps the issues found. Additionaly a mail is sent to the
+     * Developers when the build fails.
      */
     @Test
     public void shouldFreeStyleJobReachQualityGateRebuildReachAgainNoReset() {
@@ -513,6 +504,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     //Todo: Java Doc
+
     /**
      * Tests that quality gate is reached and shown in build history. Also test, that build is saved as expected and a
      * rebuild will reach the quality gate again.
