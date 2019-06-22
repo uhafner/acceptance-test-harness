@@ -21,6 +21,7 @@ import org.jenkinsci.test.acceptance.po.PageObject;
  * @author Manuel Hampp
  * @author Michaela Reitschuster
  * @author Alexandra Wenzel
+ * @author Tanja Roithmeier
  */
 public class AnalysisSummary extends PageObject {
     private static final Pattern NUMBER = Pattern.compile(".*(\\d)+.*");
@@ -225,6 +226,21 @@ public class AnalysisSummary extends PageObject {
             }
         }
         return QualityGateResult.INACTIVE;
+    }
+
+    /**
+     * Gets the button to reset the quality gate or null if not exits.
+     * @return the button
+     */
+    public WebElement getQualityGateResetButton() {
+        String buttonText = "Reset quality gate";
+        for (WebElement result : results) {
+            String text= result.getText();
+            if (result.getText().contains(buttonText)) {
+              return result.findElement(by.button(buttonText));
+            }
+        }
+        return null;
     }
 
     /**
