@@ -200,7 +200,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * the warnings are distinguished correctly and the email contains the right warnings count.
      */
     @Test
-    @WithPlugins({"token-macro", "workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
+    @WithPlugins({"email-ext", "token-macro", "workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
     public void should_distinct_warnings_if_quality_gate_not_passed_pipeline() {
 
         Mailtrap mail = configureMail();
