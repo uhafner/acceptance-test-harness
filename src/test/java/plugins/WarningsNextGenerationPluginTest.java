@@ -722,6 +722,31 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(build.getResult()).isEqualTo("SUCCESS");
         assertMailForBuild(build, mailTrap);
+
+        build.open();
+        AnalysisSummary analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
+
+        assertThat(analysisSummary).isDisplayed();
+        assertThat(analysisSummary).hasTitleText("CheckStyle: One warning");
+        assertThat(analysisSummary).hasNewSize(0);
+        assertThat(analysisSummary).hasFixedSize(0);
+        assertThat(analysisSummary).hasReferenceBuild(0);
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
+
+        createPipelineJob(job, "agent","build_status_test/build_02", mailTrap);
+
+        assertThat(build.getResult()).isEqualTo("SUCCESS");
+        assertMailForBuild(build, mailTrap);
+
+        build.open();
+        analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
+
+        assertThat(analysisSummary).isDisplayed();
+        assertThat(analysisSummary).hasTitleText("CheckStyle: 3 warnings");
+        assertThat(analysisSummary).hasNewSize(0);
+        assertThat(analysisSummary).hasFixedSize(0);
+        assertThat(analysisSummary).hasReferenceBuild(0);
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
     }
 
     private void assertMailForBuild(final Build build, final Mailtrap mailTrap) throws IOException, MessagingException {
@@ -737,7 +762,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         String script = "node('" + slave_agent + "') {\n"
                         + createResourceFromFilename(job, resource)
                         + "recordIssues tool: checkStyle(pattern: '**/*.xml')"
-                        + createQualityGateScript(1, false)
+                        + createQualityGateScript(1, true)
                         + (mail != null ? createMailScript(mail.fingerprint) : "")
                         + "}\n";
 

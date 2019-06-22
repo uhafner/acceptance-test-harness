@@ -213,6 +213,22 @@ public class AnalysisSummary extends PageObject {
     }
 
     /**
+     * Press the reset Quality Gate Button.
+     */
+    public void resetQualityGateButtonClick() {
+        openLink("reset", "No Quality Gate Reset Button available!");
+    }
+
+    /**
+     * Check if the reset Quality Gate Button is available.
+     *
+     * @return if the reset Quality Gate Button is available.
+     */
+    public boolean resetQualityGateButtonIsVisible() {
+        return findClickableResultEntryByNamePart("reset").isPresent();
+    }
+
+    /**
      * Returns the quality gate result of this parser, if set.
      *
      * @return Success - if the quality gate thresholds have not been reached. Failed - otherwise.
