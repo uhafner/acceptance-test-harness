@@ -190,6 +190,73 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
+     * Runs a pipeline with checkstyle and a quality gate. Verifies the classification of the warnings at a second unstable build.
+     */
+    @Test
+    @WithPlugins({"token-macro", "workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
+    public void quality_gate_unstable_no_reset_pipeline() {
+        createLocalAgent();
+        mail.setup(jenkins);
+        String recipient = "xxx@yyy.zzz";
+
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+        Function<String, String> pipelineGenerator = fileContent -> "node('agent') {\n"
+                + fileContent.replace("\\", "\\\\")
+                + "recordIssues tool: checkStyle(pattern: '**/checkstyle*'),\n"
+                + "qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]]\n"
+                + "emailext body: '$DEFAULT_CONTENT\\nTotal warnings: ${ANALYSIS_ISSUES_COUNT}\\nCheckstyle warnings: ${ANALYSIS_ISSUES_COUNT, tool=\"checkstyle\"}', "
+                + "recipientProviders: [[$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']], "
+                + "subject: '$DEFAULT_SUBJECT', to: '" + recipient + "', replyTo: '$DEFAULT_REPLYTO' \n"
+                + "}";
+        configurePipelineWithFiles(job, pipelineGenerator, WARNINGS_PLUGIN_PREFIX + "quality_gate/build_00/checkstyle-result.xml",
+                WARNINGS_PLUGIN_PREFIX + "quality_gate/build_00/RemoteLauncher.java");
+
+        Build build = buildJob(job);
+
+        configurePipelineWithFiles(job, pipelineGenerator, WARNINGS_PLUGIN_PREFIX + "quality_gate/build_01/checkstyle-result.xml",
+                WARNINGS_PLUGIN_PREFIX + "quality_gate/build_01/RemoteLauncher.java");
+        build = buildJob(job);
+
+        IssuesTable table = openAnalysisResult(build, CHECKSTYLE_ID).openIssuesTable();
+        assertThat(table.getRowAs(0, DefaultWarningsTableRow.class))
+                .hasFileName("RemoteLauncher.java").hasLineNumber(5).hasAge(1);
+
+        build.openStatusPage();
+        assertThat(build.getElement(by.button("Reset quality gate"))).isNotNull();
+
+        jenkins.restart();
+
+        build.openStatusPage();
+        assertThat(build.getElement(by.button("Reset quality gate"))).isNotNull();
+        table = openAnalysisResult(build, CHECKSTYLE_ID).openIssuesTable();
+        assertThat(table.getRowAs(0, DefaultWarningsTableRow.class))
+                .hasFileName("RemoteLauncher.java").hasLineNumber(5).hasAge(1);
+
+
+        configurePipelineWithFiles(job, pipelineGenerator, WARNINGS_PLUGIN_PREFIX + "quality_gate/build_02/checkstyle-result.xml",
+                WARNINGS_PLUGIN_PREFIX + "quality_gate/build_02/RemoteLauncher.java");
+        build = buildJob(job);
+        table = openAnalysisResult(build, CHECKSTYLE_ID).openIssuesTable();
+        assertThat(table.getRowAs(0, DefaultWarningsTableRow.class))
+                .hasFileName("RemoteLauncher.java").hasLineNumber(13).hasAge(1);
+        assertThat(table.getRowAs(1, DefaultWarningsTableRow.class))
+                .hasFileName("RemoteLauncher.java").hasLineNumber(13).hasAge(1);
+        assertThat(table.getRowAs(2, DefaultWarningsTableRow.class))
+                .hasFileName("RemoteLauncher.java").hasLineNumber(5).hasAge(1);
+
+        try {
+            mail.assertMail(
+                    Pattern.compile(job.name + " - Build # 3 - Still Unstable"),
+                    recipient,
+                    Pattern.compile("Total warnings: 3\nCheckstyle warnings: 3")
+            );
+        }
+        catch (MessagingException | IOException exception) {
+            throw new AssertionError(exception);
+        }
+    }
+
+    /**
      * Runs a freestyle job with checkstyle and a quality gate. Verifies the reset of the quality gate and authority to reset.
      */
     @Test
@@ -274,6 +341,92 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         }
     }
 
+    /**
+     * Runs a pipeline with checkstyle and a quality gate. Verifies the reset of the quality gate and authority to reset.
+     */
+    @Test
+    @WithPlugins({"token-macro", "workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps", "mock-security-realm", "matrix-auth@2.3"})
+    public void reset_quality_gate_pipeline() {
+        createLocalAgent();
+        mail.setup(jenkins);
+        String recipient = "xxx@yyy.zzz";
+        String admin = "admin";
+        String user = "user";
+        configureAdminAndReadOnlyUser(admin, user);
+        jenkins.login().doLogin(admin);
+
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+        Function<String, String> pipelineGenerator = fileContent -> "node('agent') {\n"
+                + fileContent.replace("\\", "\\\\")
+                + "recordIssues tool: checkStyle(pattern: '**/checkstyle*'),\n"
+                + "qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]]\n"
+                + "emailext body: '$DEFAULT_CONTENT\\nTotal warnings: ${ANALYSIS_ISSUES_COUNT}\\nCheckstyle warnings: ${ANALYSIS_ISSUES_COUNT, tool=\"checkstyle\"}', "
+                + "recipientProviders: [[$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']], "
+                + "subject: '$DEFAULT_SUBJECT', to: '" + recipient + "', replyTo: '$DEFAULT_REPLYTO' \n"
+                + "}";
+        configurePipelineWithFiles(job, pipelineGenerator, WARNINGS_PLUGIN_PREFIX + "quality_gate/build_00/checkstyle-result.xml",
+                WARNINGS_PLUGIN_PREFIX + "quality_gate/build_00/RemoteLauncher.java");
+        Build build = buildJob(job);
+
+        configurePipelineWithFiles(job, pipelineGenerator, WARNINGS_PLUGIN_PREFIX + "quality_gate/build_01/checkstyle-result.xml",
+                WARNINGS_PLUGIN_PREFIX + "quality_gate/build_01/RemoteLauncher.java");
+        build = buildJob(job);
+
+        IssuesTable table = openAnalysisResult(build, CHECKSTYLE_ID).openIssuesTable();
+        assertThat(table.getRowAs(0, DefaultWarningsTableRow.class))
+                .hasFileName("RemoteLauncher.java").hasLineNumber(5).hasAge(1);
+
+        build.openStatusPage();
+        assertThat(build.getElement(by.button("Reset quality gate"))).isNotNull();
+        jenkins.logout();
+
+        jenkins.login().doLogin(user);
+        build.openStatusPage();
+        assertThat(build.getElement(by.button("Reset quality gate"))).isNull();
+        jenkins.logout();
+
+        jenkins.login().doLogin(admin);
+        build.openStatusPage();
+        assertThat(build.getElement(by.button("Reset quality gate"))).isNotNull();
+        build.clickButton("Reset quality gate");
+        build.openStatusPage();
+        assertThat(build.getElement(by.button("Reset quality gate"))).isNull();
+
+        jenkins.visit("restart");
+        jenkins.clickButton("Yes");
+        jenkins.waitForStarted();
+        jenkins.login().doLogin(admin);
+
+        build.openStatusPage();
+        assertThat(build.getElement(by.button("Reset quality gate"))).isNull();
+        table = openAnalysisResult(build, CHECKSTYLE_ID).openIssuesTable();
+        assertThat(table.getRowAs(0, DefaultWarningsTableRow.class))
+                .hasFileName("RemoteLauncher.java").hasLineNumber(5).hasAge(1);
+
+
+        configurePipelineWithFiles(job, pipelineGenerator, WARNINGS_PLUGIN_PREFIX + "quality_gate/build_02/checkstyle-result.xml",
+                WARNINGS_PLUGIN_PREFIX + "quality_gate/build_02/RemoteLauncher.java");
+        build = buildJob(job);
+        table = openAnalysisResult(build, CHECKSTYLE_ID).openIssuesTable();
+        assertThat(table.getRowAs(0, DefaultWarningsTableRow.class))
+                .hasFileName("RemoteLauncher.java").hasLineNumber(13).hasAge(1);
+        assertThat(table.getRowAs(1, DefaultWarningsTableRow.class))
+                .hasFileName("RemoteLauncher.java").hasLineNumber(13).hasAge(1);
+        assertThat(table.getRowAs(2, DefaultWarningsTableRow.class))
+                .hasFileName("RemoteLauncher.java").hasLineNumber(5).hasAge(2);
+
+        try {
+            mail.assertMail(
+                    Pattern.compile(job.name + " - Build # 3 - Still Unstable"),
+                    recipient,
+                    Pattern.compile("Total warnings: 3\nCheckstyle warnings: 3")
+            );
+        }
+        catch (MessagingException | IOException exception) {
+            throw new AssertionError(exception);
+        }
+    }
+    
     /**
      * Runs a pipeline with checkstyle and pmd. Verifies the expansion of tokens with the token-macro plugin.
      */
