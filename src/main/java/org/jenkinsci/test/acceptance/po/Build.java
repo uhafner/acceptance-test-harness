@@ -16,6 +16,7 @@ import org.jenkinsci.test.acceptance.junit.Wait;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.openqa.selenium.Alert;
 import org.openqa.selenium.By;
+import org.openqa.selenium.NoSuchElementException;
 import org.openqa.selenium.WebElement;
 
 import static org.hamcrest.CoreMatchers.*;
@@ -134,6 +135,34 @@ public class Build extends ContainerPageObject {
 
         JsonNode d = getJson();
         return d.get("building").booleanValue() || d.get("result") == null;
+    }
+
+    /**
+     * Finds quality gate reset button for a certain tool if it exists.
+     *
+     * @param tool
+     *         Name of the tool for quality gate reset button.
+     *
+     * @return Quality gate reset button if it exists.
+     */
+    public boolean qualityGateResetButtonExists(final String tool) {
+        try {
+            WebElement element = find(by.id(tool + "-resetReference"));
+            return element != null;
+        }
+        catch (NoSuchElementException e) {
+            return false;
+        }
+    }
+
+    /**
+     * Resets the quality gate in the build.
+     *
+     * @param tool
+     *         Name of the tool. Quality gate reset will be done for this tool.
+     */
+    public void resetQualityGate(final String tool) {
+        find(by.id(tool + "-resetReference")).click();
     }
 
     public int getNumber() {

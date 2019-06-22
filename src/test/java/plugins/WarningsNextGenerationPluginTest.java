@@ -1,7 +1,6 @@
 package plugins;
 
 import java.io.IOException;
-import java.net.MalformedURLException;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
@@ -14,9 +13,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
 import org.junit.Test;
-import org.openqa.selenium.By;
-import org.openqa.selenium.NoSuchElementException;
-import org.openqa.selenium.WebElement;
 
 import com.google.inject.Inject;
 
@@ -115,19 +111,12 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
 
     /**
-     *  Runs multiple builds of a freestyle Job with PMD IssueRecorder and verifies the results
-     *  Variante 1: Not resetting of Quality Gate
+     * Runs multiple builds of a freestyle Job with PMD IssueRecorder and verifies the results Variante 1: Not resetting
+     * of Quality Gate.
      */
     @Test
-    public void shouldVerifyQualityGate() throws ExecutionException, InterruptedException {
-        SlaveController controller = new LocalSlaveController();
-        Slave agent = controller.install(jenkins).get();
-        agent.configure();
-        agent.setLabels("agent");
-        agent.save();
-        agent.waitUntilOnline();
-
-        assertThat(agent.isOnline()).isTrue();
+    public void shouldVerifyQualityGateWithFreeStyleJob() {
+        Slave agent = createSlaveAgent();
 
         FreeStyleJob job = createFreeStyleJobForDockerAgent(agent);
 
@@ -138,21 +127,17 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             recorder.setIgnoreQualityGates(true);
         });
 
-
-
         job.save();
 
-        Build build = buildJob(job);
-
+        Build build = buildJob(job).shouldBe(Result.SUCCESS);
 
         assertThat(build.getConsole())
                 .contains("[PMD] -> All quality gates have been passed")
                 .contains("[PMD] Created analysis result for 0 issues (found 0 new issues, fixed 0 issues)");
 
-
         reconfigureJobWithResource(job, "warningsFiles/1Warning/pmd.xml");
 
-        build = buildJob(job);
+        build = buildJob(job).shouldBe(Result.FAILURE);
 
         System.out.println("------------------CONSOLE OUTPUT 2------------------");
         System.out.println(build.getConsole());
@@ -171,7 +156,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         reconfigureJobWithResource(job, "warningsFiles/2Warning/pmd.xml");
 
-        build = buildJob(job);
+        build = buildJob(job).shouldBe(Result.FAILURE);
 
         System.out.println("------------------CONSOLE OUTPUT 223421343------------------");
         System.out.println(build.getConsole());
@@ -182,25 +167,18 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 .contains("[PMD] Issues delta (vs. reference build): outstanding: 1, new: 1, fixed: 0")
                 .contains("[PMD] -> FAILED - Total number of issues (any severity): 2 - Quality QualityGate: 1")
                 .contains("[PMD] -> Some quality gates have been missed: overall result is FAILED")
-                .contains("Build step 'Record compiler warnings and static analysis results' changed build result to FAILURE")
+                .contains(
+                        "Build step 'Record compiler warnings and static analysis results' changed build result to FAILURE")
                 .contains("Finished: FAILURE");
     }
 
     /**
-     *  Runs multiple builds of a freestyle Job with PMD IssueRecorder and verifies the results
-     *  Variante 2: Resetting of Quality Gate
+     * Runs multiple builds of a freestyle Job with PMD IssueRecorder and verifies the results Variante 2: Resetting of
+     * Quality Gate.
      */
     @Test
-    public void shouldVerifyQualityGateWithQualityGateReset()
-            throws ExecutionException, InterruptedException, IOException {
-        SlaveController controller = new LocalSlaveController();
-        Slave agent = controller.install(jenkins).get();
-        agent.configure();
-        agent.setLabels("agent");
-        agent.save();
-        agent.waitUntilOnline();
-
-        assertThat(agent.isOnline()).isTrue();
+    public void shouldVerifyQualityGateWithFreeStyleJobAndQualityGateReset() {
+        Slave agent = createSlaveAgent();
 
         FreeStyleJob job = createFreeStyleJobForDockerAgent(agent);
 
@@ -211,21 +189,17 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             recorder.setIgnoreQualityGates(true);
         });
 
-
-
         job.save();
 
-        Build build = buildJob(job);
-
+        Build build = buildJob(job).shouldBe(Result.SUCCESS);
 
         assertThat(build.getConsole())
                 .contains("[PMD] -> All quality gates have been passed")
                 .contains("[PMD] Created analysis result for 0 issues (found 0 new issues, fixed 0 issues)");
 
-
         reconfigureJobWithResource(job, "warningsFiles/1Warning/pmd.xml");
 
-        build = buildJob(job);
+        build = buildJob(job).shouldBe(Result.FAILURE);
 
         System.out.println("------------------CONSOLE OUTPUT 2------------------");
         System.out.println(build.getConsole());
@@ -244,9 +218,12 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         reconfigureJobWithResource(job, "warningsFiles/2Warning/pmd.xml");
 
-        resetQualityGate(job, build);
+        build.open();
+        assertThat(build.qualityGateResetButtonExists(PMD_ID)).isTrue();
+        build.resetQualityGate(PMD_ID);
+        assertThat(build.qualityGateResetButtonExists(PMD_ID)).isFalse();
 
-        build = buildJob(job);
+        build = buildJob(job).shouldBe(Result.FAILURE);
 
         System.out.println("------------------CONSOLE OUTPUT 223421343------------------");
         System.out.println(build.getConsole());
@@ -257,16 +234,148 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 .contains("[PMD] Issues delta (vs. reference build): outstanding: 1, new: 1, fixed: 0")
                 .contains("[PMD] -> FAILED - Total number of issues (any severity): 2 - Quality QualityGate: 1")
                 .contains("[PMD] -> Some quality gates have been missed: overall result is FAILED")
-                .contains("Build step 'Record compiler warnings and static analysis results' changed build result to FAILURE")
+                .contains(
+                        "Build step 'Record compiler warnings and static analysis results' changed build result to FAILURE")
                 .contains("Finished: FAILURE");
     }
 
-    private void resetQualityGate(final Job job, Build build) throws IOException {
-        visit(build.getStatusUrl());
+    /**
+     * Runs multiple builds of a pipeline Job with PMD IssueRecorder and verifies the results Variante 1: Not Resetting
+     * of Quality Gate.
+     */
+    @Test
+    public void shouldVerifyQualityGateWithPipelineJob() {
+        Slave agent = createSlaveAgent();
 
-        find(By.xpath("//a[@href='pmd/resetReference']")).click();
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+        String resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "warningsFiles/0Warning/pmd.xml");
+
+        job.script.set("node {\n"
+                + "label '" + agent.getName() + "'\n"
+                + resource.replace("\\", "\\\\")
+                + "            recordIssues ignoreFailedBuilds: false, ignoreQualityGate: true, qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]], tools: [pmdParser()] \n"
+                + "}");
+
+        job.sandbox.check();
+        job.save();
+
+        Build build = buildJob(job).shouldBe(Result.SUCCESS);
+
+        assertThat(build.getConsole())
+                .contains("[PMD] -> All quality gates have been passed")
+                .contains("[PMD] Created analysis result for 0 issues (found 0 new issues, fixed 0 issues)");
+
+        job.configure();
+        resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "warningsFiles/1Warning/pmd.xml");
+        job.script.set("node {\n"
+                + resource.replace("\\", "\\\\")
+                + "recordIssues ignoreFailedBuilds: false, ignoreQualityGate: true, qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]], tools: [pmdParser()] \n"
+                + "}");
+        job.sandbox.check();
+        job.save();
+
+        build = buildJob(job).shouldBe(Result.FAILURE);
+
+        assertThat(build.getConsole())
+                .contains("[PMD] Issues delta (vs. reference build): outstanding: 0, new: 1, fixed: 0")
+                .contains("[PMD] -> FAILED - Total number of issues (any severity): 1 - Quality QualityGate: 1")
+                .contains("[PMD] -> Some quality gates have been missed: overall result is FAILED")
+                .contains("Finished: FAILURE");
+
+        jenkins.restart();
+
+        job.open();
+        job.configure();
+        resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "warningsFiles/2Warning/pmd.xml");
+        job.script.set("node {\n"
+                + resource.replace("\\", "\\\\")
+                + "recordIssues ignoreFailedBuilds: false, ignoreQualityGate: true, qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]], tools: [pmdParser()] \n"
+                + "}");
+        job.sandbox.check();
+        job.save();
+
+        build = buildJob(job).shouldBe(Result.FAILURE);
+
+        assertThat(build.getConsole())
+                .contains("[PMD] -> 0 resolved, 2 unresolved, 0 already resolved")
+                .contains("[PMD] Issues delta (vs. reference build): outstanding: 1, new: 1, fixed: 0")
+                .contains("[PMD] -> FAILED - Total number of issues (any severity): 2 - Quality QualityGate: 1")
+                .contains("[PMD] -> Some quality gates have been missed: overall result is FAILED")
+                .contains("Finished: FAILURE");
     }
 
+    /**
+     * Runs multiple builds of a pipeline Job with PMD IssueRecorder and verifies the results Variante 2: Resetting of
+     * Quality Gate.
+     */
+    @Test
+    public void shouldVerifyQualityGateWithWithPipelineJobAndQualityGateReset() {
+        Slave agent = createSlaveAgent();
+
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+        String resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "warningsFiles/0Warning/pmd.xml");
+
+        job.script.set("node {\n"
+                + "label '" + agent.getName() + "'\n"
+                + resource.replace("\\", "\\\\")
+                + "            recordIssues ignoreFailedBuilds: false, ignoreQualityGate: true, qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]], tools: [pmdParser()] \n"
+                + "}");
+
+        job.sandbox.check();
+        job.save();
+
+        Build build = buildJob(job).shouldBe(Result.SUCCESS);
+
+        assertThat(build.getConsole())
+                .contains("[PMD] -> All quality gates have been passed")
+                .contains("[PMD] Created analysis result for 0 issues (found 0 new issues, fixed 0 issues)");
+
+        job.configure();
+
+        resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "warningsFiles/1Warning/pmd.xml");
+        job.script.set("node {\n"
+                + resource.replace("\\", "\\\\")
+                + "recordIssues ignoreFailedBuilds: false, ignoreQualityGate: true, qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]], tools: [pmdParser()] \n"
+                + "}");
+
+        job.sandbox.check();
+        job.save();
+
+        build = buildJob(job).shouldBe(Result.FAILURE);
+
+        assertThat(build.getConsole())
+                .contains("[PMD] Issues delta (vs. reference build): outstanding: 0, new: 1, fixed: 0")
+                .contains("[PMD] -> FAILED - Total number of issues (any severity): 1 - Quality QualityGate: 1")
+                .contains("[PMD] -> Some quality gates have been missed: overall result is FAILED")
+                .contains("Finished: FAILURE");
+
+        jenkins.restart();
+
+        job.open();
+        job.configure();
+
+        resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "warningsFiles/2Warning/pmd.xml");
+        job.script.set("node {\n"
+                + resource.replace("\\", "\\\\")
+                + "recordIssues ignoreFailedBuilds: false, ignoreQualityGate: true, qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]], tools: [pmdParser()] \n"
+                + "}");
+        job.sandbox.check();
+        job.save();
+
+        build.open();
+        assertThat(build.qualityGateResetButtonExists(PMD_ID)).isTrue();
+        build.resetQualityGate(PMD_ID);
+        assertThat(build.qualityGateResetButtonExists(PMD_ID)).isFalse();
+
+        build = buildJob(job).shouldBe(Result.FAILURE);
+
+        assertThat(build.getConsole())
+                .contains("[PMD] -> 0 resolved, 2 unresolved, 0 already resolved")
+                .contains("[PMD] Issues delta (vs. reference build): outstanding: 1, new: 1, fixed: 0")
+                .contains("[PMD] -> FAILED - Total number of issues (any severity): 2 - Quality QualityGate: 1")
+                .contains("[PMD] -> Some quality gates have been missed: overall result is FAILED")
+                .contains("Finished: FAILURE");
+    }
 
     /**
      * Runs a pipeline with checkstyle and pmd. Verifies the expansion of tokens with the token-macro plugin.
@@ -620,8 +729,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs a freestyle job that publishes checkstyle warnings. Verifies the content of the info and error
-     * log view.
+     * Runs a freestyle job that publishes checkstyle warnings. Verifies the content of the info and error log view.
      */
     @Test
     public void should_show_info_and_error_messages_in_freestyle_job() {
@@ -637,8 +745,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs a pipeline that publishes checkstyle warnings. Verifies the content of the info and error
-     * log view.
+     * Runs a pipeline that publishes checkstyle warnings. Verifies the content of the info and error log view.
      */
     @Test
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
@@ -683,7 +790,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Creates and builds a maven job and verifies that all warnings are shown in the summary and details views.
      */
-    @Test @WithPlugins("maven-plugin")
+    @Test
+    @WithPlugins("maven-plugin")
     public void should_show_maven_warnings_in_maven_project() {
         MavenModuleSet job = createMavenProject();
         copyResourceFilesToWorkspace(job, SOURCE_VIEW_FOLDER + "pom.xml");
@@ -723,7 +831,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Verifies that package and namespace names are resolved.
      */
-    @Test @WithPlugins("maven-plugin")
+    @Test
+    @WithPlugins("maven-plugin")
     public void should_resolve_packages_and_namespaces() {
         MavenModuleSet job = createMavenProject();
         job.copyDir(job.resource(SOURCE_VIEW_FOLDER));
@@ -773,7 +882,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Verifies that warnings can be parsed on a agent as well.
      */
-    @Test @WithDocker @WithPlugins("ssh-slaves")
+    @Test
+    @WithDocker
+    @WithPlugins("ssh-slaves")
     @WithCredentials(credentialType = WithCredentials.SSH_USERNAME_PRIVATE_KEY, values = {CREDENTIALS_ID, CREDENTIALS_KEY})
     public void should_parse_warnings_on_agent() {
         DumbSlave dockerAgent = createDockerAgent();
@@ -800,7 +911,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.setLabelExpression(dockerAgent.getName());
         return job;
     }
-
 
     /**
      * Returns a docker container that can be used to host git repositories and which can be used as build agent. If the
@@ -979,6 +1089,26 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             throw new AssertionError("Can't find resource " + name);
         }
         return Paths.get(resource.toURI());
+    }
+
+    private Slave createSlaveAgent() {
+        SlaveController controller = new LocalSlaveController();
+        Slave agent;
+        try {
+            agent = controller.install(jenkins).get();
+        }
+        catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+
+        agent.configure();
+        agent.setLabels("agent");
+        agent.save();
+        agent.waitUntilOnline();
+
+        assertThat(agent.isOnline()).isTrue();
+
+        return agent;
     }
 }
 
