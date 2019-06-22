@@ -11,10 +11,10 @@ import java.util.LinkedHashMap;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
 
 import javax.mail.MessagingException;
 
-import org.junit.Before;
 import org.junit.Test;
 
 import com.google.inject.Inject;
@@ -25,8 +25,6 @@ import org.jenkinsci.test.acceptance.junit.AbstractJUnitTest;
 import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
-import org.jenkinsci.test.acceptance.plugins.mailer.Mailer;
-import org.jenkinsci.test.acceptance.plugins.mailer.MailerGlobalConfig;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
@@ -56,7 +54,7 @@ import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
 import org.jenkinsci.test.acceptance.slave.LocalSlaveController;
 import org.jenkinsci.test.acceptance.slave.SlaveController;
-import org.jenkinsci.test.acceptance.utils.mail.MailService;
+import org.jenkinsci.test.acceptance.utils.mail.Mailtrap;
 
 import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
 
@@ -98,6 +96,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String CPD_SOURCE_PATH = "duplicate_code/Main.java";
 
     private static final String NO_PACKAGE = "-";
+    private static final String MAIL_ADDRESS = "test@test.test";
 
     /**
      * Credentials to access the docker container. The credentials are stored with the specified ID and use the provided
@@ -112,17 +111,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      */
     private static final String CREDENTIALS_ID = "git";
     private static final String CREDENTIALS_KEY = "/org/jenkinsci/test/acceptance/docker/fixtures/GitContainer/unsafe";
-
-    @Inject
-    MailerGlobalConfig mailer;
-
-    @Inject
-    MailService mail;
-
-    @Before
-    public void setup() {
-        mail.setup(jenkins);
-    }
 
     @Inject
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
@@ -286,7 +274,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     public void should_fail_quality_gate_for_freestyle_project() {
         // TODO: 3 Builds (no warning initial)
-        Slave agent = createDumpAgent();
+        Slave agent = createDumbAgent();
         FreeStyleJob job = createFreeStyleJobForAgent(agent);
 
         IssuesRecorder issuesRecorder = job.addPublisher(IssuesRecorder.class, recorder -> {
@@ -333,7 +321,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         runJobWithQualityGate(true);
     }
 
-    private Slave createDumpAgent() {
+    private Slave createDumbAgent() {
         SlaveController controller = new LocalSlaveController();
         Slave agent = null;
         try {
@@ -717,82 +705,63 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs a pipeline with checkstyle and pmd. Verifies the expansion of tokens with the token-macro plugin.
+     * Runs a pipeline with mailing configured.
      */
     @Test
-    @WithPlugins({"token-macro", "workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
     public void should_run_pipeline_and_send_mail() throws IOException, MessagingException {
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
 
-        //job.configure();
+        Mailtrap mailTrap = new Mailtrap();
+        mailTrap.setup(jenkins);
 
-        //Mailer m = job.addPublisher(Mailer.class);
-        //m.recipients.set("dev@example.com");
-
-        String checkstyle = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle1.xml");
-        String pmd = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/pmd.xml");
-
-
-        String script = "node {\n"
-                + checkstyle.replace("\\", "\\\\")
-                + pmd.replace("\\", "\\\\")
-                + "recordIssues tool: checkStyle(pattern: '**/checkstyle*')\n"
-                + "recordIssues tool: pmdParser(pattern: '**/pmd*')\n"
-                + "def total = tm('${ANALYSIS_ISSUES_COUNT}')\n"
-                + "echo '[total=' + total + ']' \n"
-                + "def checkstyle = tm('${ANALYSIS_ISSUES_COUNT, tool=\"checkstyle\"}')\n"
-                + "echo '[checkstyle=' + checkstyle + ']' \n"
-                + "def pmd = tm('${ANALYSIS_ISSUES_COUNT, tool=\"pmd\"}')\n"
-                + "echo '[pmd=' + pmd + ']' \n"
-                + "}\n";
-
-        script += asStage("recordIssues tool: javaDoc(pattern:'**/*issues.txt', reportEncoding:'UTF-8'), "
-                                + "qualityGates: [[threshold: 6, type: 'TOTAL', unstable: true]]");
-
-        script += asStage("step([$class: 'Mailer', notifyEveryUnstableBuild: true, recipients: 'me@me.com', sendToIndividuals: true])");
-
-        job.script.set(script);
-        job.sandbox.check();
-        job.save();
+        Slave agent = createDumbAgent();
+        System.out.println(agent.getName());
+        createPipelineJob(job, "agent","build_status_test/build_01", mailTrap);
 
         Build build = buildJob(job);
 
-        /*
-        mailService.getAllMails();
-
-        mailService.assertMail(
-                Pattern.compile("Build failed in Jenkins: .* #1"), "info@test.de",
-                Pattern.compile(job.name)
-        );
-        */
-
-        assertThat(build.getResult()).isEqualTo(Result.UNSTABLE);
-        assertThat(build.getConsole()).contains("[total=7]");
-        assertThat(build.getConsole()).contains("[checkstyle=3]");
-        assertThat(build.getConsole()).contains("[pmd=4]");
+        assertThat(build.getResult()).isEqualTo("SUCCESS");
+        assertMailForBuild(build, mailTrap);
     }
 
-    /**
-     * Wraps the specified steps into a stage.
-     *
-     * @param steps
-     *         the steps of the stage
-     *
-     * @return the pipeline script
-     */
-    @SuppressWarnings({"UseOfSystemOutOrSystemErr", "PMD.ConsecutiveLiteralAppends"})
-    protected String asStage(final String... steps) {
-        StringBuilder script = new StringBuilder(1024);
-        script.append("node {\n");
-        script.append("  stage ('Integration Test') {\n");
-        for (String step : steps) {
-            script.append("    ");
-            script.append(step);
-            script.append('\n');
-        }
-        script.append("  }\n");
-        script.append("}\n");
-        return script.toString();
+    private void assertMailForBuild(final Build build, final Mailtrap mailTrap) throws IOException, MessagingException {
+        mailTrap.assertMail(
+                Pattern.compile(build.getName().replace(" ", ": ")),
+                MAIL_ADDRESS,
+                Pattern.compile("build: #" + build.getNumber() + "\nanalysis issues count: 0"));
+    }
+
+    private void createPipelineJob(final WorkflowJob job, final String slave_agent, final String resource, final Mailtrap mail) {
+        job.configure();
+
+        String script = "node('" + slave_agent + "') {\n"
+                        + createResourceFromFilename(job, resource)
+                        + "recordIssues tool: checkStyle(pattern: '**/*.xml')"
+                        + createQualityGateScript(1, false)
+                        + (mail != null ? createMailScript(mail.fingerprint) : "")
+                        + "}\n";
+
+        job.script.set(script);
+        job.sandbox.check(false);
+        job.save();
+    }
+
+    private String createResourceFromFilename(final WorkflowJob job, final String resource) {
+        assertThat(resource).isNotNull();
+        String checkstyle = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + resource);
+        return checkstyle.replace("\\", "\\\\");
+    }
+
+    private String createQualityGateScript(final int treshold, final boolean unstable) {
+        return ", qualityGates: [[threshold: " + treshold
+                + ", type: 'TOTAL', unstable: " + String.valueOf(unstable) + "]]\n";
+    }
+
+    private String createMailScript(final String mailerFingerprint) {
+        return "emailext body: '''build: #${BUILD_NUMBER}\n"
+                + "analysis issues count: ${ANALYSIS_ISSUES_COUNT}''', recipientProviders: [developers()]"
+                + ", subject: '${JOB_NAME}: #${BUILD_NUMBER}', to: '" + MAIL_ADDRESS + "'"
+                + ", replyTo: '" + mailerFingerprint + "'\n";
     }
 
     private FreeStyleJob createFreeStyleJobForAgent(final Slave agent, final String... resourcesToCopy) {
