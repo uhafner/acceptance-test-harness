@@ -115,8 +115,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
 
     /**
-     * Runs a Freestyle Job with java and quality gate multiple times and verifies the quality gate
-     *  Variante 1: No resetting of Quality Gate
+     *  Runs multiple builds of a freestyle Job with PMD IssueRecorder and verifies the results
+     *  Variante 1: Not resetting of Quality Gate
      */
     @Test
     public void shouldVerifyQualityGate() throws ExecutionException, InterruptedException {
@@ -187,7 +187,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs a Freestyle Job with java and quality gate multiple times and verifies the quality gate
+     *  Runs multiple builds of a freestyle Job with PMD IssueRecorder and verifies the results
      *  Variante 2: Resetting of Quality Gate
      */
     @Test
@@ -261,11 +261,12 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 .contains("Finished: FAILURE");
     }
 
-    private void resetQualityGate(final FreeStyleJob job, Build build) throws IOException {
+    private void resetQualityGate(final Job job, Build build) throws IOException {
         visit(build.getStatusUrl());
 
         find(By.xpath("//a[@href='pmd/resetReference']")).click();
     }
+
 
     /**
      * Runs a pipeline with checkstyle and pmd. Verifies the expansion of tokens with the token-macro plugin.
@@ -799,6 +800,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.setLabelExpression(dockerAgent.getName());
         return job;
     }
+
 
     /**
      * Returns a docker container that can be used to host git repositories and which can be used as build agent. If the
