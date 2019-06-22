@@ -16,6 +16,7 @@ import java.util.regex.Pattern;
 import javax.mail.MessagingException;
 import javax.mail.internet.MimeMessage;
 
+import org.junit.Before;
 import org.junit.Test;
 
 import com.google.inject.Inject;
@@ -27,6 +28,7 @@ import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
 import org.jenkinsci.test.acceptance.plugins.mailer.Mailer;
+import org.jenkinsci.test.acceptance.plugins.mailer.MailerGlobalConfig;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
@@ -74,7 +76,7 @@ import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
  * @author Alexandra Wenzel
  * @author Nikolai Wohlgemuth
  */
-@WithPlugins("warnings-ng")
+@WithPlugins({"warnings-ng", "mailer"})
 public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String WARNINGS_PLUGIN_PREFIX = "/warnings_ng_plugin/";
 
@@ -112,7 +114,15 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String CREDENTIALS_KEY = "/org/jenkinsci/test/acceptance/docker/fixtures/GitContainer/unsafe";
 
     @Inject
-    private MailService mailService;
+    MailerGlobalConfig mailer;
+
+    @Inject
+    MailService mail;
+
+    @Before
+    public void setup() {
+        mail.setup(jenkins);
+    }
 
     @Inject
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
@@ -673,34 +683,40 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     @WithPlugins({"token-macro", "workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
     public void should_run_pipeline_and_send_mail() throws IOException, MessagingException {
-        mailService.setup(jenkins);
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
 
-        job.addPublisher(Mailer.class, m -> {m.recipients.set("info@test.de");});
+        //job.configure();
+
+        //Mailer m = job.addPublisher(Mailer.class);
+        //m.recipients.set("dev@example.com");
 
         String checkstyle = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/checkstyle1.xml");
         String pmd = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "aggregation/pmd.xml");
 
-        String script = asStage(checkstyle.replace("\\", "\\\\")
-                                      + pmd.replace("\\", "\\\\")
-                                      + "recordIssues tool: checkStyle(pattern: '**/checkstyle*')\n"
-                                      + "recordIssues tool: pmdParser(pattern: '**/pmd*')\n"
-                                      + "def total = tm('${ANALYSIS_ISSUES_COUNT}')\n"
-                                      + "echo '[total=' + total + ']' \n"
-                                      + "def checkstyle = tm('${ANALYSIS_ISSUES_COUNT, tool=\"checkstyle\"}')\n"
-                                      + "echo '[checkstyle=' + checkstyle + ']' \n"
-                                      + "def pmd = tm('${ANALYSIS_ISSUES_COUNT, tool=\"pmd\"}')\n"
-                                      + "echo '[pmd=' + pmd + ']'");
+
+        String script = "node {\n"
+                + checkstyle.replace("\\", "\\\\")
+                + pmd.replace("\\", "\\\\")
+                + "recordIssues tool: checkStyle(pattern: '**/checkstyle*')\n"
+                + "recordIssues tool: pmdParser(pattern: '**/pmd*')\n"
+                + "def total = tm('${ANALYSIS_ISSUES_COUNT}')\n"
+                + "echo '[total=' + total + ']' \n"
+                + "def checkstyle = tm('${ANALYSIS_ISSUES_COUNT, tool=\"checkstyle\"}')\n"
+                + "echo '[checkstyle=' + checkstyle + ']' \n"
+                + "def pmd = tm('${ANALYSIS_ISSUES_COUNT, tool=\"pmd\"}')\n"
+                + "echo '[pmd=' + pmd + ']' \n"
+                + "}\n";
 
         script += asStage("recordIssues tool: javaDoc(pattern:'**/*issues.txt', reportEncoding:'UTF-8'), "
                                 + "qualityGates: [[threshold: 6, type: 'TOTAL', unstable: true]]");
 
+        script += asStage("step([$class: 'Mailer', notifyEveryUnstableBuild: true, recipients: 'me@me.com', sendToIndividuals: true])");
+
         job.script.set(script);
         job.sandbox.check();
+        job.save();
 
         Build build = buildJob(job);
-
-        job.save();
 
         /*
         mailService.getAllMails();
@@ -711,7 +727,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         );
         */
 
-        //assertThat(build.getResult()).isEqualTo(Result.UNSTABLE);
+        assertThat(build.getResult()).isEqualTo(Result.UNSTABLE);
         assertThat(build.getConsole()).contains("[total=7]");
         assertThat(build.getConsole()).contains("[checkstyle=3]");
         assertThat(build.getConsole()).contains("[pmd=4]");
