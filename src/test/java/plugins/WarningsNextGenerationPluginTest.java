@@ -117,7 +117,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String CREDENTIALS_ID = "git";
     private static final String CREDENTIALS_KEY = "/org/jenkinsci/test/acceptance/docker/fixtures/GitContainer/unsafe";
 
-    private static final boolean RESTART_ENABLED = false;
+    private static final boolean RESTART_ENABLED = true;
     private static final boolean MAILTRAP_ENABLED = true;
     private static final boolean MAILTRAP_USE_CUSTOM_CREDENTIALS = true;
     private static final String MAILTRAP_TOKEN = "316bb9d2692c82fb25f6f3a4c7d4fa2b";
@@ -255,7 +255,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         summary.resetQualityGate();
 
-        referenceBuild.open();
+        referenceBuild.openStatusPage();
         summary = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
         assertThat(summary.qualityGateResetButtonIsVisible()).isFalse();
 
@@ -305,7 +305,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         summary.resetQualityGate();
 
-        referenceBuild.open();
+        referenceBuild.openStatusPage();
         summary = new AnalysisSummary(referenceBuild, CHECKSTYLE_ID);
         assertThat(summary.qualityGateResetButtonIsVisible()).isFalse();
 
