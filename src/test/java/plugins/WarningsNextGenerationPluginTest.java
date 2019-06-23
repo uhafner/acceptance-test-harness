@@ -343,7 +343,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(analysisSummary).hasTitleText("CheckStyle: 3 warnings");
         assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
         assertThat(analysisSummary).hasNewSize(3);
-        assertThat(analysisSummary).hasReferenceBuild(0);
+        assertThat(analysisSummary).hasFixedSize(0);
         assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
         assertMailForBuild(build, mailTrap, 3);
 
@@ -361,7 +361,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(analysisSummary).hasTitleText("CheckStyle: 7 warnings");
         assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
         assertThat(analysisSummary).hasNewSize(7);
-        assertThat(analysisSummary).hasReferenceBuild(0);
+        assertThat(analysisSummary).hasFixedSize(0);
         assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
         assertMailForBuild(build, mailTrap, 7);
     }
@@ -443,7 +443,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(analysisSummary).hasTitleText("CheckStyle: 3 warnings");
         assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
         assertThat(analysisSummary).hasNewSize(3);
-        assertThat(analysisSummary).hasReferenceBuild(0);
+        assertThat(analysisSummary).hasFixedSize(0);
         assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
         assertMailForBuild(build, mailTrap, 3);
 
@@ -462,7 +462,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(analysisSummary).hasTitleText("CheckStyle: 6 warnings");
         assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
         assertThat(analysisSummary).hasNewSize(5);
-        assertThat(analysisSummary).hasReferenceBuild(1);
+        assertThat(analysisSummary).hasFixedSize(1);
         assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
         assertMailForBuild(build, mailTrap, 6);
     }
