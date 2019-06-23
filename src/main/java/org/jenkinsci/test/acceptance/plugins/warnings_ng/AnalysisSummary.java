@@ -204,6 +204,7 @@ public class AnalysisSummary extends PageObject {
     public void resetQualityGate() {
         try {
             Objects.requireNonNull(getQualityGateResetButton()).click();
+            elasticSleep(2000);
         }
         catch (NullPointerException e) {
             throw new AssertionError(e.getMessage());
