@@ -331,7 +331,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         jenkins.restart();
 
-        createPipelineJobWithQualityGate(job, "agent", 2, "quality_gate/build_01", mailTrap);
+        createPipelineJobWithQualityGate(job, "agent", 2,
+                                         "quality_gate/build_01/checkstyle-result.xml", mailTrap);
         build = buildJob(job);
 
         assertThat(build.getResult()).isEqualTo("UNSTABLE");
@@ -341,7 +342,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(analysisSummary).isDisplayed();
         assertThat(analysisSummary).hasTitleText("CheckStyle: 3 warnings");
-        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.UNSTABLE);
         assertThat(analysisSummary).hasNewSize(3);
         assertThat(analysisSummary).hasFixedSize(0);
         assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
@@ -349,7 +350,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         jenkins.restart();
 
-        createPipelineJobWithQualityGate(job, "agent", 2, "quality_gate/build_02", mailTrap);
+        createPipelineJobWithQualityGate(job, "agent", 2,
+                                         "quality_gate/build_02/checkstyle-result.xml", mailTrap);
         build = buildJob(job);
 
         assertThat(build.getResult()).isEqualTo("UNSTABLE");
@@ -359,7 +361,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(analysisSummary).isDisplayed();
         assertThat(analysisSummary).hasTitleText("CheckStyle: 7 warnings");
-        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.UNSTABLE);
         assertThat(analysisSummary).hasNewSize(7);
         assertThat(analysisSummary).hasFixedSize(0);
         assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
@@ -431,7 +433,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         jenkins.restart();
 
-        createPipelineJobWithQualityGate(job, "agent", 2, "quality_gate/build_01", mailTrap);
+        createPipelineJobWithQualityGate(job, "agent", 2,
+                                         "quality_gate/build_01/checkstyle-result.xml", mailTrap);
         build = buildJob(job);
 
         assertThat(build.getResult()).isEqualTo("UNSTABLE");
@@ -441,7 +444,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(analysisSummary).isDisplayed();
         assertThat(analysisSummary).hasTitleText("CheckStyle: 3 warnings");
-        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.UNSTABLE);
         assertThat(analysisSummary).hasNewSize(3);
         assertThat(analysisSummary).hasFixedSize(0);
         assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
@@ -450,7 +453,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         analysisSummary.resetQualityGateButtonClick();
         jenkins.restart();
 
-        createPipelineJobWithQualityGate(job, "agent", 2,"quality_gate/build_02", mailTrap);
+        createPipelineJobWithQualityGate(job, "agent", 2,
+                                         "quality_gate/build_02/checkstyle-result.xml", mailTrap);
         build = buildJob(job);
 
         assertThat(build.getResult()).isEqualTo("UNSTABLE");
@@ -460,7 +464,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         assertThat(analysisSummary).isDisplayed();
         assertThat(analysisSummary).hasTitleText("CheckStyle: 6 warnings");
-        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.UNSTABLE);
         assertThat(analysisSummary).hasNewSize(5);
         assertThat(analysisSummary).hasFixedSize(1);
         assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
