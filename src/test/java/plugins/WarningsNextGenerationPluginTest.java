@@ -25,10 +25,8 @@ import org.jenkinsci.test.acceptance.junit.AbstractJUnitTest;
 import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
-import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
-import org.jenkinsci.test.acceptance.plugins.mock_security_realm.MockSecurityRealm;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AbstractNonDetailsIssuesTableRow;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AnalysisResult;
@@ -51,7 +49,6 @@ import org.jenkinsci.test.acceptance.po.Build;
 import org.jenkinsci.test.acceptance.po.Build.Result;
 import org.jenkinsci.test.acceptance.po.DumbSlave;
 import org.jenkinsci.test.acceptance.po.FreeStyleJob;
-import org.jenkinsci.test.acceptance.po.GlobalSecurityConfig;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
@@ -310,10 +307,69 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     }
 
+    /**
+     * Tests that a build with a quality gate is shown as unstable if it surpasses the set threshold. This should work
+     * with multiple builds too and persist after restarting jenkins.
+     * Additional an information mail with the status of the build should arrive.
+     *
+     * @throws IOException
+     *         if Mail IO failed
+     * @throws MessagingException
+     *         if Mail receiving failed
+     */
+    @Test
+    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
+    public void should_fail_quality_gate_for_pipeline_project() throws IOException, MessagingException {
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+        Mailtrap mailTrap = new Mailtrap();
+        mailTrap.setup(jenkins);
+        createDumbAgent();
+
+        createPipelineJobWithQualityGate(job, "agent", 2, null, null);
+        Build build = buildJob(job);
+        assertThat(build.getResult()).isEqualTo("SUCCESS");
+
+        jenkins.restart();
+
+        createPipelineJobWithQualityGate(job, "agent", 2, "quality_gate/build_01", mailTrap);
+        build = buildJob(job);
+
+        assertThat(build.getResult()).isEqualTo("UNSTABLE");
+
+        build.open();
+        AnalysisSummary analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
+
+        assertThat(analysisSummary).isDisplayed();
+        assertThat(analysisSummary).hasTitleText("CheckStyle: 3 warnings");
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
+        assertThat(analysisSummary).hasNewSize(3);
+        assertThat(analysisSummary).hasReferenceBuild(0);
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
+        assertMailForBuild(build, mailTrap, 3);
+
+        jenkins.restart();
+
+        createPipelineJobWithQualityGate(job, "agent", 2, "quality_gate/build_02", mailTrap);
+        build = buildJob(job);
+
+        assertThat(build.getResult()).isEqualTo("UNSTABLE");
+
+        build.open();
+        analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
+
+        assertThat(analysisSummary).isDisplayed();
+        assertThat(analysisSummary).hasTitleText("CheckStyle: 7 warnings");
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
+        assertThat(analysisSummary).hasNewSize(7);
+        assertThat(analysisSummary).hasReferenceBuild(0);
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
+        assertMailForBuild(build, mailTrap, 7);
+    }
 
     /**
      * Tests that a build with a quality gate is shown as unstable if it surpasses the set threshold. Additionally tests
      * if the reset quality gate button works as expected.
+     * Additional an information mail with the status of the build should arrive.
      */
     @Test
     public void should_reset_quality_gate_for_freestyle_project() {
@@ -349,6 +405,66 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(analysisSummary).hasNewSize(5);
         assertThat(analysisSummary).hasFixedSize(1);
         assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
+    }
+
+
+    /**
+     * Tests that a build with a quality gate is shown as unstable if it surpasses the set threshold. Additionally tests
+     * if the reset quality gate button works as expected.
+     *
+     * @throws IOException
+     *         if Mail IO failed
+     * @throws MessagingException
+     *         if Mail receiving failed
+     */
+    @Test
+    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
+    public void should_reset_quality_gate_for_pipeline_project() throws IOException, MessagingException {
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+        Mailtrap mailTrap = new Mailtrap();
+        mailTrap.setup(jenkins);
+        createDumbAgent();
+
+        createPipelineJobWithQualityGate(job, "agent", 2, null, null);
+        Build build = buildJob(job);
+        assertThat(build.getResult()).isEqualTo("SUCCESS");
+
+        jenkins.restart();
+
+        createPipelineJobWithQualityGate(job, "agent", 2, "quality_gate/build_01", mailTrap);
+        build = buildJob(job);
+
+        assertThat(build.getResult()).isEqualTo("UNSTABLE");
+
+        build.open();
+        AnalysisSummary analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
+
+        assertThat(analysisSummary).isDisplayed();
+        assertThat(analysisSummary).hasTitleText("CheckStyle: 3 warnings");
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
+        assertThat(analysisSummary).hasNewSize(3);
+        assertThat(analysisSummary).hasReferenceBuild(0);
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
+        assertMailForBuild(build, mailTrap, 3);
+
+        analysisSummary.resetQualityGateButtonClick();
+        jenkins.restart();
+
+        createPipelineJobWithQualityGate(job, "agent", 2,"quality_gate/build_02", mailTrap);
+        build = buildJob(job);
+
+        assertThat(build.getResult()).isEqualTo("UNSTABLE");
+
+        build.open();
+        analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
+
+        assertThat(analysisSummary).isDisplayed();
+        assertThat(analysisSummary).hasTitleText("CheckStyle: 6 warnings");
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.FAILED);
+        assertThat(analysisSummary).hasNewSize(5);
+        assertThat(analysisSummary).hasReferenceBuild(1);
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
+        assertMailForBuild(build, mailTrap, 6);
     }
 
     /**
@@ -755,57 +871,14 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     }
 
     /**
-     * Runs a pipeline job and sends an email if the quality gate is surpassed.
+     * Waits for the mail of a build to arrive in the mail trap.
      *
-     * @throws IOException
-     *         if Mail IO failed
-     * @throws MessagingException
-     *         if Mail receiving failed
+     * @param build The build the mail should be send for.
+     * @param mailTrap The mail trap where the mail should arrive.
+     * @param numberOfIssues The number of issues the build found.
+     * @throws IOException On usage of the mail trap.
+     * @throws MessagingException On usage of the mail trap.
      */
-    @Test
-    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
-    public void should_run_pipeline_and_send_mail() throws IOException, MessagingException {
-        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
-
-        Mailtrap mailTrap = new Mailtrap();
-        mailTrap.setup(jenkins);
-        createDumbAgent();
-
-        createPipelineJob(job, "agent", "aggregation/checkstyle1.xml", mailTrap);
-        Build build = buildJob(job);
-
-        assertThat(build.getResult()).isEqualTo("UNSTABLE");
-
-        build.open();
-        AnalysisSummary analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
-
-        assertThat(analysisSummary).isDisplayed();
-        assertThat(analysisSummary).hasTitleText("CheckStyle: 3 warnings");
-        assertThat(analysisSummary).hasNewSize(0);
-        assertThat(analysisSummary).hasFixedSize(0);
-        assertThat(analysisSummary).hasReferenceBuild(0);
-        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
-
-        assertMailForBuild(build, mailTrap, 3);
-
-        createPipelineJob(job, "agent", "aggregation/checkstyle2.xml", mailTrap);
-        build = buildJob(job);
-
-        assertThat(build.getResult()).isEqualTo("UNSTABLE");
-
-        build.open();
-        analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
-
-        assertThat(analysisSummary).isDisplayed();
-        assertThat(analysisSummary).hasTitleText("CheckStyle: 6 warnings");
-        assertThat(analysisSummary).hasNewSize(0);
-        assertThat(analysisSummary).hasFixedSize(0);
-        assertThat(analysisSummary).hasReferenceBuild(0);
-        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
-
-        assertMailForBuild(build, mailTrap, 6);
-    }
-
     private void assertMailForBuild(final Build build, final Mailtrap mailTrap, final int numberOfIssues)
             throws IOException, MessagingException {
         mailTrap.assertMail(
@@ -814,14 +887,27 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 Pattern.compile("build: #" + build.getNumber() + "\nanalysis issues count: " + numberOfIssues));
     }
 
-    private void createPipelineJob(final WorkflowJob job, final String slave_agent, final String resource,
-            final Mailtrap mail) {
+    /**
+     * Configures a pipeline job with quality gate.
+     *
+     * @param job The job.
+     * @param slaveAgent The slave agent.
+     * @param qualityGateThreshold The treshold of the quality gate.
+     * @param resource The resource that should be configured. May be null if it should not be configured.
+     * @param mail The mail trap that should be configured. May be null if it should not be configured.
+     */
+    private void createPipelineJobWithQualityGate(final WorkflowJob job,
+                                                  final String slaveAgent,
+                                                  final int qualityGateThreshold,
+                                                  final String resource,
+                                                  final Mailtrap mail) {
+        assertThat(slaveAgent).isNotNull();
         job.configure();
 
-        String script = "node('" + slave_agent + "') {\n"
-                + createResourceFromFilename(job, resource)
+        String script = "node('" + slaveAgent + "') {\n"
+                + (resource != null ? createResourceFromFilename(job, resource) : "")
                 + "recordIssues enabledForFailure: true, tool: checkStyle(pattern: '**/*.xml'), sourceCodeEncoding: 'UTF-8'"
-                + createQualityGateScript(1, true)
+                + createQualityGateScript(qualityGateThreshold, true)
                 + (mail != null ? createMailScript(mail.fingerprint) : "")
                 + "}\n";
 
@@ -830,17 +916,34 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.save();
     }
 
+    /**
+     * Creates a resource from the file that is given.
+     * @param job The job to create the resource for.
+     * @param resource The path to the resource as String.
+     * @return The resource usable as a pipeline script part.
+     */
     private String createResourceFromFilename(final WorkflowJob job, final String resource) {
         assertThat(resource).isNotNull();
         String checkstyle = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + resource);
         return checkstyle.replace("\\", "\\\\");
     }
 
+    /**
+     * Create the quality gate part of a pipeline script.
+     * @param treshold The threshold of the quality gate.
+     * @param unstable Value of the unstable parameter.
+     * @return The pipeline script part of the quality gate.
+     */
     private String createQualityGateScript(final int treshold, final boolean unstable) {
         return ", qualityGates: [[threshold: " + treshold
                 + ", type: 'TOTAL', unstable: " + String.valueOf(unstable) + "]]\n";
     }
 
+    /**
+     * Creates the pipeline script part for email notifications.
+     * @param mailerFingerprint The fingerprint of the mailer.
+     * @return The pipeline script part for email notifications.
+     */
     private String createMailScript(final String mailerFingerprint) {
         return "emailext body: '''build: #${BUILD_NUMBER}\n"
                 + "analysis issues count: ${ANALYSIS_ISSUES_COUNT}''', recipientProviders: [developers()]"
