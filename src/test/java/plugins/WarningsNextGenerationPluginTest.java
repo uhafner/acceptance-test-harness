@@ -912,7 +912,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 + "}\n";
 
         job.script.set(script);
-        job.sandbox.check(false);
+        job.sandbox.check();
         job.save();
     }
 
