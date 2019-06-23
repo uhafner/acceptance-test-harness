@@ -11,9 +11,10 @@ import java.util.LinkedHashMap;
 import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
+import javax.mail.MessagingException;
 
 import org.junit.Test;
-import org.openqa.selenium.NoSuchElementException;
 
 import com.google.inject.Inject;
 
@@ -23,6 +24,7 @@ import org.jenkinsci.test.acceptance.junit.AbstractJUnitTest;
 import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
+import org.jenkinsci.test.acceptance.plugins.email_ext.EmailExtPublisher;
 import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
@@ -102,8 +104,13 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String ADMIN_USER = "admin";
     private static final String NORMAL_USER = "user1";
 
+    private static final String WARNING_MAIL_RECEIVER = "warning@testmail.com";
+
     @Inject
     SlaveController slaveController;
+
+    @Inject
+    private MailService mail;
 
     /**
      * Credentials to access the docker container. The credentials are stored with the specified ID and use the provided
@@ -141,6 +148,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     @WithPlugins({"mock-security-realm", "matrix-auth@2.3"})
     public void should_record_without_qualitygate_reset_FreeStyle() throws ExecutionException, InterruptedException {
+        //mail.setup(jenkins);
+
         configureSecurity();
         jenkins.login().doLogin(ADMIN_USER);
 
@@ -153,6 +162,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, false);
         });
         job.save();
+
+        // configureWarningMail(job);
 
         Build build = buildFailingJob(job);
 
@@ -188,6 +199,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 "-> Some quality gates have been missed: overall result is FAILED");
         assertThat(build.getConsole()).contains(
                 "[CheckStyle] Created analysis result for 3 issues (found 0 new issues, fixed 0 issues)");
+
+        //verifyWarningMail(job.name, 3);
     }
 
     /**
@@ -1084,6 +1097,38 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             mas.addUser(ADMIN_USER).admin();
             mas.addUser(NORMAL_USER).readOnly();
         });
+    }
+
+    /**
+     * Verifies correct mail subject and body for warning summary mails.
+     *
+     * @param jobName Name of the job to be checked.
+     * @param warningsCount Warnings count for this job.
+     */
+    private void verifyWarningMail(final String jobName, final int warningsCount) {
+        try {
+            mail.assertMail(Pattern.compile(jobName + ": Warning summary mail"),
+                    WARNING_MAIL_RECEIVER,
+                    Pattern.compile("Warning count: " + warningsCount));
+        }
+        catch (MessagingException | IOException e) {
+            throw new AssertionError("Can't assert mail.", e);
+        }
+    }
+
+    /**
+     * Configures warnings mails for given job. Mails will contain the number of warnings found if the job build fails.
+     *
+     * @param job Job for which the mailing should be configured.
+     */
+    private void configureWarningMail(final FreeStyleJob job) {
+        job.configure();
+        job.addShellStep("fail");
+        EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
+        pub.setRecipient(WARNING_MAIL_RECEIVER);
+        pub.subject.set(job.name + ": Warning summary mail");
+        pub.body.set("Warning count: ${ANALYSIS_ISSUES_COUNT}");
+        job.save();
     }
 }
 
