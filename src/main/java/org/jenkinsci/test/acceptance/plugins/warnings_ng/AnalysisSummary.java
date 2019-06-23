@@ -200,8 +200,14 @@ public class AnalysisSummary extends PageObject {
     /**
      * Clicks the quality gate reset button/link.
      */
+    @SuppressWarnings("illegalCatch")
     public void resetQualityGate() {
-        openLink("reset", "No quality gate reset button/link found");
+        try {
+            Objects.requireNonNull(getQualityGateResetButton()).click();
+        }
+        catch (NullPointerException e) {
+            throw new AssertionError(e.getMessage());
+        }
     }
 
     /**
@@ -210,7 +216,23 @@ public class AnalysisSummary extends PageObject {
      * @return {@code true} if quality gate reset button/link exists, {@code false} otherwise
      */
     public boolean qualityGateResetButtonIsVisible() {
-        return findClickableResultEntryByNamePart("reset").isPresent();
+        return Objects.nonNull(getQualityGateResetButton());
+    }
+
+    private WebElement getQualityGateResetButton() {
+        for (WebElement result : results) {
+            WebElement maybeButton;
+            try {
+                maybeButton = result.findElement(by.button("Reset quality gate"));
+            }
+            catch (org.openqa.selenium.NoSuchElementException e) {
+                continue;
+            }
+            if (Objects.nonNull(maybeButton)) {
+                return maybeButton;
+            }
+        }
+        return null;
     }
 
     private AnalysisResult openLink(final String linkText, final String errorMessage) {
