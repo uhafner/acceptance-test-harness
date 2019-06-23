@@ -289,13 +289,13 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         jenkins.restart();
 
         reconfigureJobWithResource(job, "quality_gate/build_01");
-        build = buildJob(job).shouldBe(Result.SUCCESS);
+        build = buildJob(job).shouldBe(Result.UNSTABLE);
         build.open();
         AnalysisSummary analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
-        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.SUCCESS);
+        assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.UNSTABLE);
         assertThat(analysisSummary).hasNewSize(3);
         assertThat(analysisSummary).hasFixedSize(0);
-        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isFalse();
+        assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
 
         jenkins.restart();
 
@@ -304,8 +304,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         build.open();
         analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
         assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.UNSTABLE);
-        assertThat(analysisSummary).hasNewSize(5);
-        assertThat(analysisSummary).hasFixedSize(1);
+        assertThat(analysisSummary).hasNewSize(7);
+        assertThat(analysisSummary).hasFixedSize(0);
         assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
 
     }
