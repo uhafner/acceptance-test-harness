@@ -186,7 +186,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         reconfigureJobWithResource(job, "quality_gate/3/checkstyle-result.xml");
 
-        jenkins.restart();
+
+        jenkins.visit("restart");
+        jenkins.clickButton("Yes");
+        jenkins.waitForStarted();
         jenkins.login().doLogin(ADMIN_USER);
 
         job.open();
