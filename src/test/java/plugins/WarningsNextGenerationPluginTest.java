@@ -463,12 +463,12 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         analysisSummary = new AnalysisSummary(build, CHECKSTYLE_ID);
 
         assertThat(analysisSummary).isDisplayed();
-        assertThat(analysisSummary).hasTitleText("CheckStyle: 6 warnings");
+        assertThat(analysisSummary).hasTitleText("CheckStyle: 7 warnings");
         assertThat(analysisSummary).hasQualityGateResult(QualityGateResult.UNSTABLE);
         assertThat(analysisSummary).hasNewSize(5);
         assertThat(analysisSummary).hasFixedSize(1);
         assertThat(analysisSummary.resetQualityGateButtonIsVisible()).isTrue();
-        assertMailForBuild(build, mailTrap, 6);
+        assertMailForBuild(build, mailTrap, 7);
     }
 
     /**
