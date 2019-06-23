@@ -275,11 +275,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         Build build1 = buildJob(job);
         build1.open();
-        assertThatExceptionOfType(NoSuchElementException.class).isThrownBy(() -> {
-            new AnalysisSummary(build1, CHECKSTYLE_ID).resetQualityGate();
-            sleep(1000);
-            new AnalysisSummary(build1, CHECKSTYLE_ID).resetQualityGate();
-        });
+        new AnalysisSummary(build1, CHECKSTYLE_ID).resetQualityGate();
+        assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).hasQualityGateResetButton()).isFalse();
 
         assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
                 "-> found 1 file",
