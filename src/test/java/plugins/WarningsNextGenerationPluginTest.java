@@ -23,8 +23,10 @@ import org.jenkinsci.test.acceptance.junit.AbstractJUnitTest;
 import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
+import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
+import org.jenkinsci.test.acceptance.plugins.mock_security_realm.MockSecurityRealm;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AbstractNonDetailsIssuesTableRow;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AnalysisResult;
@@ -47,10 +49,12 @@ import org.jenkinsci.test.acceptance.po.Build;
 import org.jenkinsci.test.acceptance.po.Build.Result;
 import org.jenkinsci.test.acceptance.po.DumbSlave;
 import org.jenkinsci.test.acceptance.po.FreeStyleJob;
+import org.jenkinsci.test.acceptance.po.GlobalSecurityConfig;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
 import org.jenkinsci.test.acceptance.slave.SlaveController;
+import org.jenkinsci.test.acceptance.utils.mail.MailService;
 
 import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
 
@@ -69,6 +73,8 @@ import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
  * @author Arne Schöntag
  * @author Alexandra Wenzel
  * @author Nikolai Wohlgemuth
+ * @author Florian Hageneder
+ * @author Veronika Zwickenpflug
  */
 @WithPlugins("warnings-ng")
 public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
@@ -92,6 +98,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String CPD_SOURCE_PATH = "duplicate_code/Main.java";
 
     private static final String NO_PACKAGE = "-";
+
+    private static final String ADMIN_USER = "admin";
+    private static final String NORMAL_USER = "user1";
 
     @Inject
     SlaveController slaveController;
@@ -130,8 +139,13 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      *         When waiting for agent to start was interrupted.
      */
     @Test
+    @WithPlugins({"mock-security-realm", "matrix-auth@2.3"})
     public void should_record_without_qualitygate_reset_FreeStyle() throws ExecutionException, InterruptedException {
+        configureSecurity();
+        jenkins.login().doLogin(ADMIN_USER);
+
         Slave agent = createDockerAgentWithoutCredentials();
+
         FreeStyleJob job = createFreeStyleJob("quality_gate/1/checkstyle-result.xml");
         job.setLabelExpression(agent.getName());
         job.addPublisher(IssuesRecorder.class, recorder -> {
@@ -140,16 +154,30 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         });
         job.save();
 
-        Build build = buildJob(job);
+        Build build = buildFailingJob(job);
+
+        jenkins.logout();
+        jenkins.login().doLogin(NORMAL_USER);
         build.open();
+
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).hasQualityGateResetButton()).isFalse();
+
+        jenkins.logout();
+        jenkins.login().doLogin(ADMIN_USER);
+        build.open();
+
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).hasQualityGateResetButton()).isTrue();
+
         assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
                 "-> found 1 file",
                 "-> found 1 issue (skipped 0 duplicates)",
                 "-> Some quality gates have been missed: overall result is FAILED");
 
-        // ToDo: make sure the button is not visible for others
         reconfigureJobWithResource(job, "quality_gate/3/checkstyle-result.xml");
+
         jenkins.restart();
+        jenkins.login().doLogin(ADMIN_USER);
+
         job.open();
 
         build = buildJob(job);
@@ -212,6 +240,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 + "   }\n  }\n }\n}");
         job.save();
         jenkins.restart();
+        System.out.println("RESTARTED");
         job.open();
 
         build = buildJob(job);
@@ -1047,6 +1076,17 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             throw new AssertionError("Can't find resource " + name);
         }
         return Paths.get(resource.toURI());
+    }
+
+    private void configureSecurity() {
+        GlobalSecurityConfig security = new GlobalSecurityConfig(jenkins);
+        security.configure(() -> {
+            MockSecurityRealm realm = security.useRealm(MockSecurityRealm.class);
+            realm.configure(ADMIN_USER, NORMAL_USER);
+            MatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(MatrixAuthorizationStrategy.class);
+            mas.addUser(ADMIN_USER).admin();
+            mas.addUser(NORMAL_USER).readOnly();
+        });
     }
 }
 
