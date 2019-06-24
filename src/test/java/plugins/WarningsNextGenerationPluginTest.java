@@ -122,10 +122,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * Tests that a quality gate result is reached and shown in build history, even after a jenkins restart. Permissions
      * are set up to test, that only users with appropriate rules are able to reset the quality gate. Furthermore it is
      * checked, that resetting the quality gate resets the newly found issues for next build and the Developers receive
-     * mail on failed builds. In this Test a Freestyle Job is used.
+     * mail after the last build. In this Test a Freestyle Job is used.
      */
     @Test
-    public void shouldFreeStyleJobReachQualityGateRebuildReachAgain() {
+    public void shouldFreeStyleJobReachQualityGateReset() {
         FreeStyleJob job = setUpFreeStyleJobOnAgent();
 
         buildJob(job).shouldSucceed();
@@ -165,11 +165,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Tests that a quality gate result is reached and shown in build history, even after a jenkins restart. Permissions
      * are set up to test, that only users with appropriate rules are able to reset the quality gate. Furthermore it is
-     * checked, that a quality gate, which hasn't been reset, keeps the issues found. Additionaly a mail is sent to the
-     * Developers when the build fails. In this Test a Freestyle Job is used.
+     * checked, that a quality gate, which hasn't been reset, keeps the issues found. Additionally a mail is sent to the
+     * Developers after the last build. In this Test a Freestyle Job is used.
      */
     @Test
-    public void shouldFreeStyleJobReachQualityGateRebuildReachAgainNoReset() {
+    public void shouldFreeStyleJobReachQualityGateNoReset() {
         FreeStyleJob job = setUpFreeStyleJobOnAgent();
 
         buildJob(job).shouldSucceed();
@@ -210,7 +210,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      */
     @Test
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
-    public void shouldPipelineJobReachQualityGateRebuildReachAgain() {
+    public void shouldPipelineJobReachQualityGateReset() {
         Slave agent = createLocalAgent();
 
         mail.setup(jenkins);
@@ -257,7 +257,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      */
     @Test
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
-    public void shouldPipelineJobReachQualityGateRebuildReachAgainNoReset() {
+    public void shouldPipelineJobReachQualityGateNoReset() {
         Slave agent = createLocalAgent();
 
         mail.setup(jenkins);
