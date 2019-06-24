@@ -239,7 +239,6 @@ public class AnalysisSummary extends PageObject {
                     return result.findElement(by.id(id + "-resetReference"));
                 }
                 catch (org.openqa.selenium.NoSuchElementException e) {
-                    e.printStackTrace();
                     return null;
                 }
             }

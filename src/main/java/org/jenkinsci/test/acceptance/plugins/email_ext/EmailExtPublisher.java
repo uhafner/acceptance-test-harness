@@ -1,6 +1,7 @@
 package org.jenkinsci.test.acceptance.plugins.email_ext;
 
 import org.jenkinsci.test.acceptance.po.*;
+
 import org.openqa.selenium.NoSuchElementException;
 
 /**
@@ -12,7 +13,7 @@ public class EmailExtPublisher extends AbstractStep implements PostBuildStep {
     private final Control recipient = control("project_recipient_list", "recipientlist_recipients");
     public final Control body = control("project_default_content");
 
-    private boolean advacedOpened;
+    private boolean advancedOpened;
 
     public EmailExtPublisher(Job parent, String path) {
         super(parent, path);
@@ -22,20 +23,27 @@ public class EmailExtPublisher extends AbstractStep implements PostBuildStep {
         recipient.set(r);
 
         ensureAdvancedOpened();
-        // since 2.38 refactored to hetero-list, recepients ware preselected
+        // since 2.38 refactored to hetero-list, recipients were preselected
         try {
             control("project_triggers/sendToList").check();
-        } catch (NoSuchElementException ex) {
+        }
+        catch (NoSuchElementException ex) {
             // some later releases do not preselect recipients
             control("project_triggers/hetero-list-add[recipientProviders]").selectDropdownMenu("Recipient List");
 
         }
     }
 
+    public void addProjectTrigger(final String stageTitle) {
+        ensureAdvancedOpened();
+
+        control("hetero-list-add[project_triggers]").selectDropdownMenu(stageTitle);
+    }
+
     public void ensureAdvancedOpened() {
-        if (!advacedOpened) {
+        if (!advancedOpened) {
             control("advanced-button").click();
-            advacedOpened = true;
+            advancedOpened = true;
         }
     }
 }

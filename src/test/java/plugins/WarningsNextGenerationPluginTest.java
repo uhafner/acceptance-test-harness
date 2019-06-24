@@ -110,6 +110,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private static final String ADMIN_USERNAME = "admin";
     private static final String USER_USERNAME = "anonymous";
 
+    private static final String RECIPIENTS_MAIL = "dev@example.com";
+
     @Inject
     private MailService mail;
 
@@ -138,13 +140,14 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         });
     }
 
-    private void configureBuildErrorMailForJob(final FreeStyleJob job) {
+    private void addMailPublisherOnStage(final FreeStyleJob job, final String stage) {
         job.configure();
-        job.addShellStep("fail"); // Job needs to fail to send a mail - Other option: Extend Mail PageObject
         EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
         pub.subject.set("Modified $DEFAULT_SUBJECT");
-        pub.setRecipient("dev@example.com");
-        pub.body.set("$DEFAULT_CONTENT\nwith amendment");
+        pub.setRecipient(RECIPIENTS_MAIL);
+        pub.body.set(
+                "$DEFAULT_CONTENT\nTotal build warnings: ${ANALYSIS_ISSUES_COUNT}, PMD: ${ANALYSIS_ISSUES_COUNT, tool=\"pmd\"}");
+        pub.addProjectTrigger(stage);
         job.save();
     }
 
@@ -183,8 +186,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class, r -> {
             r.addTool("PMD");
             r.setEnabledForFailure(true);
+            r.addQualityGateConfiguration(2, QualityGateType.NEW, true);
         });
-        recorder.addQualityGateConfiguration(2, QualityGateType.NEW, true);
         job.save();
 
         Build build = buildJob(job).shouldSucceed();
@@ -197,69 +200,52 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         logoutUser();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
-        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.getResetQualityGateButton()).isNull();  // No permission to reset
+        assertPmd(build, job, "PMD: 2 warnings", 2, false);
 
         loginAsAdmin();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
-        pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.getResetQualityGateButton()).isNotNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        AnalysisSummary pmd = assertPmd(build, job, "PMD: 2 warnings", 2, true);
         pmd.getResetQualityGateButton().click();
 
         new WebDriverWait(driver, 5).until(ExpectedConditions.invisibilityOf(pmd.getResetQualityGateButton()));
 
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.getResetQualityGateButton()).isNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+        assertPmd(build, job, "PMD: 2 warnings", 2, false);
 
         jenkins.restart(); // Our readOnly user is anonymous due to problems with restart if we use a real user
         loginAsAdmin();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
 
-        pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.getResetQualityGateButton()).isNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+        assertPmd(build, job, "PMD: 2 warnings", 2, false);
 
         reconfigureJobWithResource(job, "build_status_test/build_01/pmd.xml");
-        configureBuildErrorMailForJob(job);
+        addMailPublisherOnStage(job, "Always");
 
-        build = buildJob(job).shouldFail(); // We need a fail - otherwise no mail is sent
+        build = buildJob(job).shouldSucceed();
         build.open();
 
-        pmd = new AnalysisSummary(build, PMD_ID);
+        assertPmd(build, job, "PMD: 3 warnings", 1, false);
+        assertMail("^Modified ", RECIPIENTS_MAIL, "\nTotal build warnings: 3, PMD: 3$");
+    }
+
+    private AnalysisSummary assertPmd(final Build build, final Job job, final String title, final int newSize,
+            final boolean button) {
+        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 3 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(1);
-        assertThat(pmd.getResetQualityGateButton()).isNull();
+        assertThat(pmd).hasTitleText(title);
+        assertThat(pmd.getNewSize()).isEqualTo(newSize);
+        if (button) {
+            assertThat(pmd.getResetQualityGateButton()).isNotNull();
+        }
+        else {
+            assertThat(pmd.getResetQualityGateButton()).isNull();
+        }
         assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
         assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
 
-        //Todo: Mb more checks on the mail
-        try {
-            mail.assertMail(Pattern.compile("^Modified "),
-                    "dev@example.com",
-                    Pattern.compile("\nwith amendment$"));
-        }
-        catch (MessagingException | IOException e) {
-            throw new AssertionError("Error while assert mail.", e);
-        }
+        return pmd;
     }
 
     /**
@@ -297,81 +283,48 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class, r -> {
             r.addTool("PMD");
             r.setEnabledForFailure(true);
+            r.addQualityGateConfiguration(2, QualityGateType.NEW, true);
         });
-        recorder.addQualityGateConfiguration(2, QualityGateType.NEW, true);
         job.save();
 
         Build build = buildJob(job).shouldSucceed();
         build.open();
 
         reconfigureJobWithResource(job, "build_status_test/build_02/pmd.xml");
-        configureBuildErrorMailForJob(job);
         build = buildJob(job).shouldBeUnstable();
         build.open();
 
         logoutUser();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
-        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
-        assertThat(pmd.getResetQualityGateButton()).isNull(); // No permission to reset
+
+        assertPmd(build, job, "PMD: 2 warnings", 2, false);
 
         loginAsAdmin();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
-        pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.getResetQualityGateButton()).isNotNull(); // No click in this test
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+
+        assertPmd(build, job, "PMD: 2 warnings", 2, true);
 
         jenkins.restart(); // Our readOnly user is anonymous due to problems with restart if we use a real user
         loginAsAdmin();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
 
-        pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.getResetQualityGateButton()).isNotNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+        assertPmd(build, job, "PMD: 2 warnings", 2, true);
 
         reconfigureJobWithResource(job, "build_status_test/build_01/pmd.xml");
-        configureBuildErrorMailForJob(job);
+        addMailPublisherOnStage(job, "Status Changed");
 
-        build = buildJob(job).shouldFail(); // We need a fail - otherwise no mail is sent
+        build = buildJob(job).shouldSucceed();
         build.open();
 
-        pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 3 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(3); // Because we did not reset
-        assertThat(pmd.getResetQualityGateButton()).isNotNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
-
-        //Todo: Mb more checks on the mail
-        //Todo: Move email address and stuff to some variable
-        try {
-            mail.assertMail(Pattern.compile("^Modified "),
-                    "dev@example.com",
-                    Pattern.compile("\nwith amendment$"));
-        }
-        catch (MessagingException | IOException e) {
-            throw new AssertionError("Error while assert mail.", e);
-        }
+        assertPmd(build, job, "PMD: 3 warnings", 3, true);
+        assertMail("^Modified ", RECIPIENTS_MAIL, "\nTotal build warnings: 3, PMD: 3$");
     }
 
     private WorkflowJob setPipelineScript(WorkflowJob job, final String resource, final boolean qualityGate,
-            final String agentName, final boolean sendMailOnBuildFail) {
+            final String agentName, final boolean sendMail) {
         if (qualityGate) {
             job.configure();
         }
@@ -392,13 +345,12 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             stageList.add("stage('Build')  {recordIssues tool: pmdParser(pattern: '**/pmd*')}");
         }
 
-        //Todo: Move email address and stuff to some variable
-        if (sendMailOnBuildFail) {
+        if (sendMail) {
             stageList.add("stage('failedNewAll') {\n"
                     + "\temailext body: '$DEFAULT_CONTENT\\nwith amendment', "
                     + "recipientProviders: [developers()], "
                     + "subject: 'Modified $DEFAULT_SUBJECT', "
-                    + "to: 'dev@example.com'\n"
+                    + "to: '" + RECIPIENTS_MAIL + "'\n"
                     + "}");
         }
 
@@ -447,60 +399,27 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         build = buildJob(job).shouldBeUnstable();
         build.open();
 
-        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.getResetQualityGateButton()).isNotNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+        AnalysisSummary pmd = assertPmd(build, job, "PMD: 2 warnings", 2, true);
 
         pmd.getResetQualityGateButton().click();
 
         new WebDriverWait(driver, 5).until(ExpectedConditions.invisibilityOf(pmd.getResetQualityGateButton()));
 
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.getResetQualityGateButton()).isNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+        assertPmd(build, job, "PMD: 2 warnings", 2, false);
 
         jenkins.restart();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
 
-        pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.getResetQualityGateButton()).isNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+        assertPmd(build, job, "PMD: 2 warnings", 2, false);
 
         job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true, agentName,
                 true);
         build = buildJob(job).shouldSucceed();
         build.open();
 
-        pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 3 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(1);
-        assertThat(pmd.getResetQualityGateButton()).isNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
-
-        //Todo: Mb more checks on the mail
-        //Todo: Move email address and stuff to some variable
-        try {
-            mail.assertMail(Pattern.compile("^Modified "),
-                    "dev@example.com",
-                    Pattern.compile("\nwith amendment$"));
-        }
-        catch (MessagingException | IOException e) {
-            throw new AssertionError("Error while assert mail.", e);
-        }
+        assertPmd(build, job, "PMD: 3 warnings", 1, false);
+        assertMail("^Modified ", RECIPIENTS_MAIL, "\nTotal build warnings: 3, PMD: 3$");
     }
 
     /**
@@ -542,54 +461,26 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         build = buildJob(job).shouldBeUnstable();
         build.open();
 
-        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.getResetQualityGateButton()).isNotNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
-
-        new WebDriverWait(driver, 5).until(ExpectedConditions.invisibilityOf(pmd.getResetQualityGateButton()));
-
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.getResetQualityGateButton()).isNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+        assertPmd(build, job, "PMD: 2 warnings", 2, false);
 
         jenkins.restart();
         build = job.getLastBuild().shouldBeUnstable();
         build.open();
 
-        pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(2);
-        assertThat(pmd.getResetQualityGateButton()).isNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+        assertPmd(build, job, "PMD: 2 warnings", 2, false);
 
         job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true, agentName,
                 true);
         build = buildJob(job).shouldSucceed();
         build.open();
 
-        pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 3 warnings");
-        assertThat(pmd.getNewSize()).isEqualTo(3);
-        assertThat(pmd.getResetQualityGateButton()).isNull();
-        assertThat(pmd.findClickableResultEntryByNamePart("warning").isPresent()).isTrue();
-        assertThat(pmd.findClickableResultEntryByNamePart(job.name).isPresent()).isTrue();
+        assertPmd(build, job, "PMD: 3 warnings", 3, false);
+        assertMail("^Modified ", RECIPIENTS_MAIL, "\nTotal build warnings: 3, PMD: 3$");
+    }
 
-        //Todo: Mb more checks on the mail
-        //Todo: Move email address and stuff to some variable
+    private void assertMail(final String subjectPattern, final String recipient, final String contentPattern) {
         try {
-            mail.assertMail(Pattern.compile("^Modified "),
-                    "dev@example.com",
-                    Pattern.compile("\nwith amendment$"));
+            mail.assertMail(Pattern.compile(subjectPattern), recipient, Pattern.compile(contentPattern));
         }
         catch (MessagingException | IOException e) {
             throw new AssertionError("Error while assert mail.", e);
