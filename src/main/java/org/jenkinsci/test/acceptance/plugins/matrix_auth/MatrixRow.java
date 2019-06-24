@@ -40,7 +40,7 @@ public class MatrixRow extends PageAreaImpl {
      * Check the read only permission on overall and job.
      */
     public MatrixRow readOnly() {
-        return on(OVERALL_READ, ITEM_READ, VIEW_READ);
+        return on(OVERALL_READ, ITEM_READ);
     }
 
     /**
@@ -59,7 +59,4 @@ public class MatrixRow extends PageAreaImpl {
     public static final String ITEM_BUILD       = "hudson.model.Item.Build";
     public static final String ITEM_CANCEL      = "hudson.model.Item.Cancel";
     public static final String VIEW_READ        = "hudson.model.View.Read";
-    public static final String VIEW_DELETE      = "hudson.model.View.Delete";
-    public static final String VIEW_CONFIGURE   = "hudson.model.View.Configure";
-    public static final String VIEW_CREATE      = "hudson.model.View.Create";
 }

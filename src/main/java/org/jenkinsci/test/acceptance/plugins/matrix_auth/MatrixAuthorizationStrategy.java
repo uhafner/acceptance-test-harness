@@ -39,12 +39,4 @@ public class MatrixAuthorizationStrategy extends AuthorizationStrategy {
     public MatrixRow getUser(String name) {
         return new MatrixRow(this,"data/"+name);
     }
-
-    /**
-     * Picks up the default/anonymous user table.
-     * @return
-     */
-    public MatrixRow getAnonymousUser() {
-        return getUser("anonymous");
-    }
 }
