@@ -12,6 +12,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
 
+import org.junit.Ignore;
 import org.junit.Test;
 
 import com.google.inject.Inject;
@@ -119,7 +120,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Runs a pipeline with checkstyle and pmd. Verifies the expansion of tokens with the token-macro plugin.
      */
-    @Test
+    @Test @Ignore
     @WithPlugins({"token-macro", "workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
     public void should_expand_token() {
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
@@ -152,7 +153,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * Tests the build overview page by running two builds with three different tools enabled. Checks the contents of
      * the result summaries for each tool.
      */
-    @Test
+    @Test @Ignore
     public void should_show_build_summary_and_link_to_details() {
         FreeStyleJob job = createFreeStyleJob("build_status_test/build_01");
         addRecorderWith3Tools(job);
@@ -225,7 +226,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * Tests the build overview page by running two builds that aggregate the three different tools into a single
      * result. Checks the contents of the result summary.
      */
-    @Test
+    @Test @Ignore
     public void should_aggregate_tools_into_single_result() {
         FreeStyleJob job = createFreeStyleJob("build_status_test/build_01");
         IssuesRecorder recorder = addRecorderWith3Tools(job);
@@ -271,7 +272,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Verifies that the quality gate is evaluated and changes the result of the build to UNSTABLE or FAILED.
      */
-    @Test
+    @Test @Ignore
     public void should_change_build_result_if_quality_gate_is_not_passed() {
         runJobWithQualityGate(false);
         runJobWithQualityGate(true);
@@ -296,7 +297,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * Verifies that clicking on the (+) icon within the details column of the issues table will show and hide the
      * details child row.
      */
-    @Test
+    @Test @Ignore
     public void should_open_and_hide_details_row() {
         Build build = createAndBuildFreeStyleJob("CPD",
                 cpd -> cpd.setHighThreshold(2).setNormalThreshold(1),
@@ -328,7 +329,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Verifies that the links to the source code view are working.
      */
-    @Test
+    @Test @Ignore
     public void should_open_source_code_view_from_issues_table() {
         Build build = createAndBuildFreeStyleJob("CPD",
                 cpd -> cpd.setHighThreshold(2).setNormalThreshold(1),
@@ -360,7 +361,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Verifies that the severity links in the issues table filter the results by the selected severity.
      */
-    @Test
+    @Test @Ignore
     public void should_filter_results_by_severity() {
         Build build = createAndBuildFreeStyleJob("CPD",
                 cpd -> cpd.setHighThreshold(3).setNormalThreshold(2),
@@ -395,7 +396,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Test to check that the issue filter can be configured and is applied.
      */
-    @Test
+    @Test @Ignore
     public void should_filter_issues_by_include_and_exclude_filters() {
         FreeStyleJob job = createFreeStyleJob("issue_filter/checkstyle-result.xml");
         job.addPublisher(IssuesRecorder.class, recorder -> {
@@ -434,7 +435,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Starts two builds with different configurations and checks the entries of the issues table.
      */
-    @Test
+    @Test @Ignore
     public void should_show_details_in_issues_table() {
         FreeStyleJob job = createFreeStyleJob("aggregation/checkstyle1.xml", "aggregation/checkstyle2.xml",
                 "aggregation/pmd.xml");
@@ -470,7 +471,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Runs a freestyle job that publishes checkstyle warnings. Verifies the content of the info and error log view.
      */
-    @Test
+    @Test @Ignore
     public void should_show_info_and_error_messages_in_freestyle_job() {
         FreeStyleJob job = createFreeStyleJob(CHECKSTYLE_XML);
         job.addPublisher(IssuesRecorder.class, recorder -> {
@@ -712,7 +713,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     /**
      * Runs a pipeline that publishes checkstyle warnings. Verifies the content of the info and error log view.
      */
-    @Test
+    @Test @Ignore
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
     public void should_show_info_and_error_messages_in_pipeline() {
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
@@ -756,7 +757,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * Creates and builds a maven job and verifies that all warnings are shown in the summary and details views.
      */
     @Test
-    @WithPlugins("maven-plugin")
+    @Ignore @WithPlugins("maven-plugin")
     public void should_show_maven_warnings_in_maven_project() {
         MavenModuleSet job = createMavenProject();
         copyResourceFilesToWorkspace(job, SOURCE_VIEW_FOLDER + "pom.xml");
@@ -797,7 +798,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * Verifies that package and namespace names are resolved.
      */
     @Test
-    @WithPlugins("maven-plugin")
+    @Ignore @WithPlugins("maven-plugin")
     public void should_resolve_packages_and_namespaces() {
         MavenModuleSet job = createMavenProject();
         job.copyDir(job.resource(SOURCE_VIEW_FOLDER));
@@ -851,7 +852,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @WithDocker
     @WithPlugins("ssh-slaves")
     @WithCredentials(credentialType = WithCredentials.SSH_USERNAME_PRIVATE_KEY, values = {CREDENTIALS_ID, CREDENTIALS_KEY})
-    public void should_parse_warnings_on_agent() {
+    public @Ignore void should_parse_warnings_on_agent() {
         DumbSlave dockerAgent = createDockerAgent();
         FreeStyleJob job = createFreeStyleJobForAgent(dockerAgent, "issue_filter/checkstyle-result.xml");
         job.addPublisher(IssuesRecorder.class, recorder -> {

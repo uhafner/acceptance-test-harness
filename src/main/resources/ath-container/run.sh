@@ -93,4 +93,4 @@ shift 2
 
 set -x
 
-BROWSER=$browser JENKINS_WAR=$war mvn --show-version test "$@"
+BROWSER=$browser JENKINS_WAR=$war mvn --show-version test "$@" -DElasticTime.factor=3
