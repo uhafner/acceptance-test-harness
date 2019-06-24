@@ -112,16 +112,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     private static final String RECIPIENTS_MAIL = "dev@example.com";
 
+    private static final String ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS = "PMD: 2 warnings";
+    private static final String ANALYSIS_SUMMARY_PMD_TITLE_3_WARNINGS = "PMD: 3 warnings";
+
     @Inject
     private MailService mail;
-
-    private void logoutUser() {
-        jenkins.logout();
-    }
-
-    private void loginAsAdmin() {
-        jenkins.login().doLogin(ADMIN_USERNAME);
-    }
 
     private void configureSecurity() {
         GlobalSecurityConfig security = new GlobalSecurityConfig(jenkins);
@@ -151,6 +146,28 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.save();
     }
 
+    private FreeStyleJob setUpFreeStyleJobOnAgent() {
+        Slave agent = createLocalAgent();
+
+        mail.setup(jenkins);
+
+        configureSecurity();
+        jenkins.login().doLogin(ADMIN_USERNAME);
+
+        FreeStyleJob job = createFreeStyleJob();
+        job.configure();
+        job.setLabelExpression(agent.getName());
+
+        job.addPublisher(IssuesRecorder.class, r -> {
+            r.addTool("PMD");
+            r.setEnabledForFailure(true);
+            r.addQualityGateConfiguration(2, QualityGateType.NEW, true);
+        });
+        job.save();
+
+        return job;
+    }
+
     /**
      * Tests that a quality gate result is reached and shown in build history, even after a jenkins restart. Permissions
      * are set up to test, that only users with appropriate rules are able to reset the quality gate. Furthermore it is
@@ -159,79 +176,46 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      */
     @Test
     public void shouldFreeStyleJobReachQualityGateRebuildReachAgain() {
-        SlaveController controller = new LocalSlaveController();
-        Slave agent;
-        try {
-            agent = controller.install(jenkins).get();
-        }
-        catch (InterruptedException | ExecutionException e) {
-            throw new AssertionError("Error while getting slave.", e);
-        }
-        agent.configure();
-        agent.setLabels("agent");
-        agent.save();
-        agent.waitUntilOnline();
+        FreeStyleJob job = setUpFreeStyleJobOnAgent();
 
-        mail.setup(jenkins);
-
-        assertThat(agent.isOnline()).isTrue();
-
-        configureSecurity();
-        loginAsAdmin();
-
-        FreeStyleJob job = createFreeStyleJob();
-        job.configure();
-        job.setLabelExpression(agent.getName());
-
-        IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class, r -> {
-            r.addTool("PMD");
-            r.setEnabledForFailure(true);
-            r.addQualityGateConfiguration(2, QualityGateType.NEW, true);
-        });
-        job.save();
-
-        Build build = buildJob(job).shouldSucceed();
-        build.open();
+        buildJob(job).shouldSucceed();
 
         reconfigureJobWithResource(job, "build_status_test/build_02/pmd.xml");
-        build = buildJob(job).shouldBeUnstable();
-        build.open();
+        Build build = buildJob(job).shouldBeUnstable();
 
-        logoutUser();
-        build = job.getLastBuild().shouldBeUnstable();
-        build.open();
-        assertPmd(build, job, "PMD: 2 warnings", 2, false);
+        jenkins.logout();
+        assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
+                ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, false);
 
-        loginAsAdmin();
-        build = job.getLastBuild().shouldBeUnstable();
-        build.open();
-
-        AnalysisSummary pmd = assertPmd(build, job, "PMD: 2 warnings", 2, true);
+        jenkins.login().doLogin(ADMIN_USERNAME);
+        AnalysisSummary pmd = assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
+                ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, true);
         pmd.getResetQualityGateButton().click();
 
         new WebDriverWait(driver, 5).until(ExpectedConditions.invisibilityOf(pmd.getResetQualityGateButton()));
 
-        assertPmd(build, job, "PMD: 2 warnings", 2, false);
+        assertBuildAndPMDAnalysisSummary(job, build, Result.UNSTABLE, ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, false);
 
-        jenkins.restart(); // Our readOnly user is anonymous due to problems with restart if we use a real user
-        loginAsAdmin();
-        build = job.getLastBuild().shouldBeUnstable();
-        build.open();
+        jenkins.restart();
+        jenkins.login().doLogin(ADMIN_USERNAME);
 
-        assertPmd(build, job, "PMD: 2 warnings", 2, false);
+        assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
+                ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, false);
 
         reconfigureJobWithResource(job, "build_status_test/build_01/pmd.xml");
         addMailPublisherOnStage(job, "Always");
 
-        build = buildJob(job).shouldSucceed();
-        build.open();
-
-        assertPmd(build, job, "PMD: 3 warnings", 1, false);
+        assertBuildAndPMDAnalysisSummary(job, buildJob(job), Result.SUCCESS, ANALYSIS_SUMMARY_PMD_TITLE_3_WARNINGS, 1,
+                false);
         assertMail("^Modified ", RECIPIENTS_MAIL, "\nTotal build warnings: 3, PMD: 3$");
     }
 
-    private AnalysisSummary assertPmd(final Build build, final Job job, final String title, final int newSize,
+    private AnalysisSummary assertBuildAndPMDAnalysisSummary(final Job job, final Build build, final Result buildResult,
+            final String title, final int newSize,
             final boolean button) {
+        build.shouldBe(buildResult);
+        build.openStatusPage();
+
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
         assertThat(pmd).hasTitleText(title);
@@ -256,70 +240,34 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      */
     @Test
     public void shouldFreeStyleJobReachQualityGateRebuildReachAgainNoReset() {
-        SlaveController controller = new LocalSlaveController();
-        Slave agent;
-        try {
-            agent = controller.install(jenkins).get();
-        }
-        catch (InterruptedException | ExecutionException e) {
-            throw new AssertionError("Error while getting slave.", e);
-        }
-        agent.configure();
-        agent.setLabels("agent");
-        agent.save();
-        agent.waitUntilOnline();
+        FreeStyleJob job = setUpFreeStyleJobOnAgent();
 
-        mail.setup(jenkins);
-
-        assertThat(agent.isOnline()).isTrue();
-
-        configureSecurity();
-        loginAsAdmin();
-
-        FreeStyleJob job = createFreeStyleJob();
-        job.configure();
-        job.setLabelExpression(agent.getName());
-
-        IssuesRecorder recorder = job.addPublisher(IssuesRecorder.class, r -> {
-            r.addTool("PMD");
-            r.setEnabledForFailure(true);
-            r.addQualityGateConfiguration(2, QualityGateType.NEW, true);
-        });
-        job.save();
-
-        Build build = buildJob(job).shouldSucceed();
-        build.open();
+        buildJob(job).shouldSucceed();
 
         reconfigureJobWithResource(job, "build_status_test/build_02/pmd.xml");
-        build = buildJob(job).shouldBeUnstable();
-        build.open();
+        buildJob(job).shouldBeUnstable();
 
-        logoutUser();
-        build = job.getLastBuild().shouldBeUnstable();
-        build.open();
+        jenkins.logout();
 
-        assertPmd(build, job, "PMD: 2 warnings", 2, false);
+        assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
+                ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, false);
 
-        loginAsAdmin();
-        build = job.getLastBuild().shouldBeUnstable();
-        build.open();
+        jenkins.login().doLogin(ADMIN_USERNAME);
 
-        assertPmd(build, job, "PMD: 2 warnings", 2, true);
+        assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
+                ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, true);
 
-        jenkins.restart(); // Our readOnly user is anonymous due to problems with restart if we use a real user
-        loginAsAdmin();
-        build = job.getLastBuild().shouldBeUnstable();
-        build.open();
+        jenkins.restart();
+        jenkins.login().doLogin(ADMIN_USERNAME);
 
-        assertPmd(build, job, "PMD: 2 warnings", 2, true);
+        assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
+                ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, true);
 
         reconfigureJobWithResource(job, "build_status_test/build_01/pmd.xml");
-        addMailPublisherOnStage(job, "Status Changed");
+        addMailPublisherOnStage(job, "Always");
 
-        build = buildJob(job).shouldSucceed();
-        build.open();
-
-        assertPmd(build, job, "PMD: 3 warnings", 3, true);
+        assertBuildAndPMDAnalysisSummary(job, buildJob(job), Result.UNSTABLE, ANALYSIS_SUMMARY_PMD_TITLE_3_WARNINGS, 3,
+                true);
         assertMail("^Modified ", RECIPIENTS_MAIL, "\nTotal build warnings: 3, PMD: 3$");
     }
 
@@ -347,10 +295,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         if (sendMail) {
             stageList.add("stage('failedNewAll') {\n"
-                    + "\temailext body: '$DEFAULT_CONTENT\\nwith amendment', "
+                    + "\temailext body: '$DEFAULT_CONTENT\\nTotal build warnings: ${ANALYSIS_ISSUES_COUNT}, PMD: ${ANALYSIS_ISSUES_COUNT, tool=\"pmd\"}', "
                     + "recipientProviders: [developers()], "
-                    + "subject: 'Modified $DEFAULT_SUBJECT', "
-                    + "to: '" + RECIPIENTS_MAIL + "'\n"
+                    + "subject: 'Modified $DEFAULT_SUBJECT', to: '" + RECIPIENTS_MAIL
+                    + "', replyTo: '$DEFAULT_REPLYTO' \n"
                     + "}");
         }
 
@@ -360,15 +308,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         return job;
     }
 
-    /**
-     * Tests that a quality gate result is reached and shown in build history, even after a jenkins restart. Permissions
-     * are set up to test, that only users with appropriate rules are able to reset the quality gate. Furthermore it is
-     * checked, that resetting the quality gate resets the newly found issues for next build and the Developers receive
-     * mail on new quality gate issues. In this Test a Pipeline Job is used.
-     */
-    @Test
-    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
-    public void shouldPipelineJobReachQualityGateRebuildReachAgain() {
+    private Slave createLocalAgent() {
         SlaveController controller = new LocalSlaveController();
         Slave agent;
         try {
@@ -382,43 +322,53 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         agent.save();
         agent.waitUntilOnline();
 
-        mail.setup(jenkins);
-
         assertThat(agent.isOnline()).isTrue();
+        return agent;
+    }
+
+    /**
+     * Tests that a quality gate result is reached and shown in build history, even after a jenkins restart. Permissions
+     * are set up to test, that only users with appropriate rules are able to reset the quality gate. Furthermore it is
+     * checked, that resetting the quality gate resets the newly found issues for next build and the Developers receive
+     * mail on new quality gate issues. In this Test a Pipeline Job is used.
+     */
+    @Test
+    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
+    public void shouldPipelineJobReachQualityGateRebuildReachAgain() {
+        Slave agent = createLocalAgent();
+
+        mail.setup(jenkins);
 
         final String agentName = agent.getName();
 
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
         setPipelineScript(job, "", false, agentName, false);
 
-        Build build = buildJob(job).shouldSucceed();
-        build.open();
+        buildJob(job).shouldSucceed();
 
-        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/pmd.xml", true, agentName,
+        setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/pmd.xml", true, agentName,
                 false);
-        build = buildJob(job).shouldBeUnstable();
-        build.open();
+        Build build = buildJob(job);
 
-        AnalysisSummary pmd = assertPmd(build, job, "PMD: 2 warnings", 2, true);
+        AnalysisSummary pmd = assertBuildAndPMDAnalysisSummary(job, build, Result.UNSTABLE,
+                ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, true);
 
         pmd.getResetQualityGateButton().click();
 
         new WebDriverWait(driver, 5).until(ExpectedConditions.invisibilityOf(pmd.getResetQualityGateButton()));
 
-        assertPmd(build, job, "PMD: 2 warnings", 2, false);
+        assertBuildAndPMDAnalysisSummary(job, build, Result.UNSTABLE, ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, false);
 
         jenkins.restart();
-        build = job.getLastBuild().shouldBeUnstable();
-        build.open();
 
-        assertPmd(build, job, "PMD: 2 warnings", 2, false);
+        assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
+                ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, false);
 
-        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true, agentName,
+        setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true, agentName,
                 true);
-        build = buildJob(job).shouldSucceed();
-        build.open();
 
-        assertPmd(build, job, "PMD: 3 warnings", 1, false);
+        assertBuildAndPMDAnalysisSummary(job, buildJob(job), Result.SUCCESS, ANALYSIS_SUMMARY_PMD_TITLE_3_WARNINGS, 1,
+                false);
         assertMail("^Modified ", RECIPIENTS_MAIL, "\nTotal build warnings: 3, PMD: 3$");
     }
 
@@ -431,50 +381,33 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps"})
     public void shouldPipelineJobReachQualityGateRebuildReachAgainNoReset() {
-        SlaveController controller = new LocalSlaveController();
-        Slave agent;
-        try {
-            agent = controller.install(jenkins).get();
-        }
-        catch (InterruptedException | ExecutionException e) {
-            throw new AssertionError("Error while getting slave.", e);
-        }
-        agent.configure();
-        agent.setLabels("agent");
-        agent.save();
-        agent.waitUntilOnline();
+        Slave agent = createLocalAgent();
 
         mail.setup(jenkins);
-
-        assertThat(agent.isOnline()).isTrue();
 
         final String agentName = agent.getName();
 
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
         setPipelineScript(job, "", false, agentName, false);
 
-        Build build = buildJob(job).shouldSucceed();
-        build.open();
+        buildJob(job).shouldSucceed();
 
-        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/pmd.xml", true, agentName,
+        setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/pmd.xml", true, agentName,
                 false);
-        build = buildJob(job).shouldBeUnstable();
-        build.open();
 
-        assertPmd(build, job, "PMD: 2 warnings", 2, false);
+        assertBuildAndPMDAnalysisSummary(job, buildJob(job), Result.UNSTABLE, ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2,
+                true);
 
         jenkins.restart();
-        build = job.getLastBuild().shouldBeUnstable();
-        build.open();
 
-        assertPmd(build, job, "PMD: 2 warnings", 2, false);
+        assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
+                ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, true);
 
-        job = setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true, agentName,
+        setPipelineScript(job, WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/pmd.xml", true, agentName,
                 true);
-        build = buildJob(job).shouldSucceed();
-        build.open();
 
-        assertPmd(build, job, "PMD: 3 warnings", 3, false);
+        assertBuildAndPMDAnalysisSummary(job, buildJob(job), Result.UNSTABLE, ANALYSIS_SUMMARY_PMD_TITLE_3_WARNINGS, 3,
+                true);
         assertMail("^Modified ", RECIPIENTS_MAIL, "\nTotal build warnings: 3, PMD: 3$");
     }
 
@@ -569,7 +502,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         build.open();
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
-        assertThat(pmd).hasTitleText("PMD: 2 warnings");
+        assertThat(pmd).hasTitleText(ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS);
         assertThat(pmd).hasNewSize(0);
         assertThat(pmd).hasFixedSize(1);
         assertThat(pmd).hasReferenceBuild(1);
