@@ -148,7 +148,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     @Test
     @WithPlugins({"mock-security-realm", "matrix-auth@2.3"})
     public void should_record_without_qualitygate_reset_FreeStyle() throws ExecutionException, InterruptedException {
-        //mail.setup(jenkins);
+        mail.setup(jenkins);
 
         configureSecurity();
         jenkins.login().doLogin(ADMIN_USER);
@@ -163,7 +163,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         });
         job.save();
 
-        // configureWarningMail(job);
+        configureWarningMail(job);
 
         Build build = buildFailingJob(job);
 
@@ -203,7 +203,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(build.getConsole()).contains(
                 "[CheckStyle] Created analysis result for 3 issues (found 0 new issues, fixed 0 issues)");
 
-        //verifyWarningMail(job.name, 3);
+        verifyWarningMail(job.name, 2, 3);
     }
 
     /**
@@ -285,19 +285,20 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.setLabelExpression(agent.getName());
         job.addPublisher(IssuesRecorder.class, recorder -> {
             recorder.setTool("CheckStyle");
-            recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, false);
+            recorder.setEnabledForFailure(true);
+            recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, true);
         });
         job.save();
 
         Build build1 = buildJob(job);
         build1.open();
         new AnalysisSummary(build1, CHECKSTYLE_ID).resetQualityGate();
-        assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).hasQualityGateResetButton()).isFalse();
+        //assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).hasQualityGateResetButton()).isFalse();
 
         assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
                 "-> found 1 file",
                 "-> found 1 issue (skipped 0 duplicates)",
-                "-> Some quality gates have been missed: overall result is FAILED");
+                "-> Some quality gates have been missed: overall result is WARNING");
 
         reconfigureJobWithResource(job, "quality_gate/3/checkstyle-result.xml");
         jenkins.restart();
@@ -307,9 +308,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(new AnalysisSummary(build2, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
                 "-> found 1 file",
                 "-> found 3 issues (skipped 0 duplicates)",
-                "-> Some quality gates have been missed: overall result is FAILED");
+                "-> Some quality gates have been missed: overall result is WARNING");
         assertThat(build2.getConsole()).contains(
-                "[CheckStyle] Created analysis result for 3 issues (found 0 new issues, fixed 0 issues)");
+                "[CheckStyle] Created analysis result for 3 issues (found 2 new issues, fixed 0 issues)");
+        System.out.println(build2.getConsole());
     }
 
     /**
@@ -1108,9 +1110,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * @param jobName Name of the job to be checked.
      * @param warningsCount Warnings count for this job.
      */
-    private void verifyWarningMail(final String jobName, final int warningsCount) {
+    private void verifyWarningMail(final String jobName, final int buildNumber, final int warningsCount) {
         try {
-            mail.assertMail(Pattern.compile(jobName + ": Warning summary mail"),
+            mail.assertMail(Pattern.compile(jobName + " - Build # " + buildNumber + ".*"),
                     WARNING_MAIL_RECEIVER,
                     Pattern.compile("Warning count: " + warningsCount));
         }
@@ -1126,10 +1128,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      */
     private void configureWarningMail(final FreeStyleJob job) {
         job.configure();
-        job.addShellStep("fail");
         EmailExtPublisher pub = job.addPublisher(EmailExtPublisher.class);
         pub.setRecipient(WARNING_MAIL_RECEIVER);
-        pub.subject.set(job.name + ": Warning summary mail");
+        pub.subject.set("$DEFAULT_SUBJECT");
         pub.body.set("Warning count: ${ANALYSIS_ISSUES_COUNT}");
         job.save();
     }
