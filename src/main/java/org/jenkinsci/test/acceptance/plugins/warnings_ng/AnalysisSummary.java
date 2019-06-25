@@ -236,7 +236,7 @@ public class AnalysisSummary extends PageObject {
     private WebElement getQualityGateResetButton() throws org.openqa.selenium.NoSuchElementException {
         for (WebElement result : results) {
             if (result.getText().contains("Quality gate")) {
-                return result.findElement(by.href(id + "/resetReference"));
+                return result.findElement(by.id(id + "-resetReference"));
             }
         }
         throw new org.openqa.selenium.NoSuchElementException("Quality gate reset button not found");
@@ -348,6 +348,6 @@ public class AnalysisSummary extends PageObject {
      * Determines the quality gate result.
      */
     public enum QualityGateResult {
-        SUCCESS, FAILED, UNSTABLE, INACTIVE;
+        SUCCESS, FAILED, UNSTABLE, INACTIVE
     }
 }
