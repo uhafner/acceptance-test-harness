@@ -1141,4 +1141,3 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         return Paths.get(resource.toURI());
     }
 }
-
