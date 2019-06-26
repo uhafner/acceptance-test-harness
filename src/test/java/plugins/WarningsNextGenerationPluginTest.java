@@ -345,14 +345,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private void configureSecurity() {
         GlobalSecurityConfig security = new GlobalSecurityConfig(jenkins);
 
-        //final JenkinsDatabaseSecurityRealm[] realm = new JenkinsDatabaseSecurityRealm[1];
-        //security.configure(() -> {
-        //    realm[0] = security.useRealm(JenkinsDatabaseSecurityRealm.class);
-        //});
-//
-        //realm[0].signup(ADMIN_USERNAME);
-        //realm[0].signup(MAINTAINER_USERNAME);
-
         security.configure(() -> {
             MockSecurityRealm realm = security.useRealm(MockSecurityRealm.class);
             realm.configure(ADMIN_USERNAME, MAINTAINER_USERNAME);
