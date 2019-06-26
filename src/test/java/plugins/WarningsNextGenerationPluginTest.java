@@ -256,7 +256,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 + "   }\n  }\n }\n}");
         job.save();
         jenkins.restart();
-        System.out.println("RESTARTED");
         job.open();
 
         build = buildJob(job);
@@ -292,8 +291,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         Build build1 = buildJob(job);
         build1.open();
-        new AnalysisSummary(build1, CHECKSTYLE_ID).resetQualityGate();
-        //assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).hasQualityGateResetButton()).isFalse();
+        assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).hasQualityGateResetButton()).isTrue();
+        build1.clickButton("Reset quality gate");
+        build1.openStatusPage();
+        assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).hasQualityGateResetButton()).isFalse();
 
         assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
                 "-> found 1 file",
@@ -311,7 +312,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 "-> Some quality gates have been missed: overall result is WARNING");
         assertThat(build2.getConsole()).contains(
                 "[CheckStyle] Created analysis result for 3 issues (found 2 new issues, fixed 0 issues)");
-        System.out.println(build2.getConsole());
     }
 
     /**
@@ -328,7 +328,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         Slave agent = createDockerAgentWithoutCredentials();
         WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
         String resource = job.copyResourceStep(
-                WARNINGS_PLUGIN_PREFIX + "build_status_test/build_01/checkstyle-result.xml");
+                WARNINGS_PLUGIN_PREFIX + "quality_gate/1/checkstyle-result.xml");
         job.script.set("pipeline {\n"
                 + " agent{ label '" + agent.getName() + "' }\n"
                 + " stages { \n"
@@ -338,7 +338,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 + "   }\n"
                 + "  }\n  stage('record issues') {\n"
                 + "   steps {\n"
-                + "    recordIssues qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]], tools: [checkStyle()]\n"
+                + "    recordIssues qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]], tools: [checkStyle()]\n"
                 + "   }\n  }\n }\n}");
         job.sandbox.check();
         job.save();
@@ -349,10 +349,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
                 "-> found 1 file",
                 "-> found 1 issue (skipped 0 duplicates)",
-                "-> Some quality gates have been missed: overall result is FAILED");
+                "-> Some quality gates have been missed: overall result is WARNING");
 
         job.configure();
-        resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "build_status_test/build_02/checkstyle-result.xml");
+        resource = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "quality_gate/3/checkstyle-result.xml");
         job.script.set("pipeline {\n"
                 + " agent{ label '" + agent.getName() + "' }\n"
                 + " stages { \n"
@@ -362,8 +362,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 + "   }\n"
                 + "  }\n  stage('record issues') {\n"
                 + "   steps {\n"
-                + "    recordIssues qualityGates: [[threshold: 1, type: 'TOTAL', unstable: false]], tools: [checkStyle()]\n"
+                + "    recordIssues qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]], tools: [checkStyle()]\n"
                 + "   }\n  }\n }\n}");
+        job.sandbox.check();
         job.save();
         jenkins.restart();
 
@@ -372,10 +373,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
                 "-> found 1 file",
                 "-> found 3 issues (skipped 0 duplicates)",
-                "-> Some quality gates have been missed: overall result is FAILED");
+                "-> Some quality gates have been missed: overall result is WARNING");
         build.open();
         assertThat(build.getConsole()).contains(
-                "[CheckStyle] Created analysis result for 3 issues (found 0 new issues, fixed 0 issues)");
+                "[CheckStyle] Created analysis result for 3 issues (found 2 new issues, fixed 0 issues)");
 
     }
 
