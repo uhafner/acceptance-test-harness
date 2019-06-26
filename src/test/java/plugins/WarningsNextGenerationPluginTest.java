@@ -129,7 +129,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * mail after the last build. In this Test a Freestyle Job is used.
      */
     @Test
-    @WithPlugins({"email-ext", "token-macro", "mock-security-realm", "matrix-auth@2.3"})
+    @WithPlugins({"email-ext", "mock-security-realm", "matrix-auth"})
     public void shouldFreeStyleJobReachQualityGateReset() {
         FreeStyleJob job = setUpFreeStyleJobOnAgent();
 
@@ -178,7 +178,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * Developers after the last build. In this Test a Freestyle Job is used.
      */
     @Test
-    @WithPlugins({"email-ext", "token-macro", "mock-security-realm", "matrix-auth@2.3"})
+    @WithPlugins({"email-ext", "mock-security-realm", "matrix-auth@2.3"})
     public void shouldFreeStyleJobReachQualityGateNoReset() {
         FreeStyleJob job = setUpFreeStyleJobOnAgent();
 
@@ -221,7 +221,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * mail on new quality gate issues. In this Test a Pipeline Job is used.
      */
     @Test
-    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps", "email-ext", "token-macro", "mock-security-realm", "matrix-auth@2.3"})
+    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps", "email-ext", "mock-security-realm", "matrix-auth@2.3"})
     public void shouldPipelineJobReachQualityGateReset() {
         Slave agent = createLocalAgent();
         WorkflowJob job = setUpPipelineJobOnAgent(agent);
@@ -273,7 +273,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * Developers when new quality gates issues occur. In this Test a Pipeline Job is used.
      */
     @Test
-    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps", "email-ext", "token-macro", "mock-security-realm", "matrix-auth@2.3"})
+    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps", "email-ext", "mock-security-realm", "matrix-auth@2.3"})
     public void shouldPipelineJobReachQualityGateNoReset() {
         Slave agent = createLocalAgent();
         WorkflowJob job = setUpPipelineJobOnAgent(agent);
