@@ -34,6 +34,7 @@ import org.jenkinsci.test.acceptance.plugins.email_ext.EmailExtPublisher;
 import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
+import org.jenkinsci.test.acceptance.plugins.mock_security_realm.MockSecurityRealm;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AbstractNonDetailsIssuesTableRow;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AnalysisResult;
@@ -128,7 +129,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * mail after the last build. In this Test a Freestyle Job is used.
      */
     @Test
-    @WithPlugins({"email-ext", "matrix-auth@2.3"})
+    @WithPlugins({"email-ext", "token-macro", "mock-security-realm", "matrix-auth@2.3"})
     public void shouldFreeStyleJobReachQualityGateReset() {
         FreeStyleJob job = setUpFreeStyleJobOnAgent();
 
@@ -156,8 +157,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertBuildAndPMDAnalysisSummary(job, build, Result.UNSTABLE,
                 ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, false);
 
-        jenkins.restart();
-        jenkins.login().doLogin(ADMIN_USERNAME);
+        restartJenkinsAndLogin(ADMIN_USERNAME);
 
         assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
                 ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, false);
@@ -178,7 +178,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * Developers after the last build. In this Test a Freestyle Job is used.
      */
     @Test
-    @WithPlugins({"email-ext", "matrix-auth@2.3"})
+    @WithPlugins({"email-ext", "token-macro", "mock-security-realm", "matrix-auth@2.3"})
     public void shouldFreeStyleJobReachQualityGateNoReset() {
         FreeStyleJob job = setUpFreeStyleJobOnAgent();
 
@@ -200,9 +200,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
                 ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, true);
 
-        jenkins.restart();
+        restartJenkinsAndLogin(ADMIN_USERNAME);
 
-        jenkins.login().doLogin(ADMIN_USERNAME);
         assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
                 ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, true);
 
@@ -222,7 +221,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * mail on new quality gate issues. In this Test a Pipeline Job is used.
      */
     @Test
-    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps", "email-ext", "matrix-auth@2.3"})
+    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps", "email-ext", "token-macro", "mock-security-realm", "matrix-auth@2.3"})
     public void shouldPipelineJobReachQualityGateReset() {
         Slave agent = createLocalAgent();
         WorkflowJob job = setUpPipelineJobOnAgent(agent);
@@ -254,9 +253,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         assertBuildAndPMDAnalysisSummary(job, build, Result.UNSTABLE,
                 ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, false);
 
-        jenkins.restart();
+        restartJenkinsAndLogin(ADMIN_USERNAME);
 
-        jenkins.login().doLogin(ADMIN_USERNAME);
         assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
                 ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, false);
 
@@ -275,7 +273,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      * Developers when new quality gates issues occur. In this Test a Pipeline Job is used.
      */
     @Test
-    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps", "email-ext", "matrix-auth@2.3"})
+    @WithPlugins({"workflow-cps", "pipeline-stage-step", "workflow-durable-task-step", "workflow-basic-steps", "email-ext", "token-macro", "mock-security-realm", "matrix-auth@2.3"})
     public void shouldPipelineJobReachQualityGateNoReset() {
         Slave agent = createLocalAgent();
         WorkflowJob job = setUpPipelineJobOnAgent(agent);
@@ -304,9 +302,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2,
                 true);
 
-        jenkins.restart();
+        restartJenkinsAndLogin(MAINTAINER_USERNAME);
 
-        jenkins.login().doLogin(MAINTAINER_USERNAME);
         assertBuildAndPMDAnalysisSummary(job, job.getLastBuild(), Result.UNSTABLE,
                 ANALYSIS_SUMMARY_PMD_TITLE_2_WARNINGS, 2, true);
         jenkins.logout();
@@ -348,19 +345,21 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
     private void configureSecurity() {
         GlobalSecurityConfig security = new GlobalSecurityConfig(jenkins);
 
-        final JenkinsDatabaseSecurityRealm[] realm = new JenkinsDatabaseSecurityRealm[1];
-        security.configure(() -> {
-            realm[0] = security.useRealm(JenkinsDatabaseSecurityRealm.class);
-        });
+        //final JenkinsDatabaseSecurityRealm[] realm = new JenkinsDatabaseSecurityRealm[1];
+        //security.configure(() -> {
+        //    realm[0] = security.useRealm(JenkinsDatabaseSecurityRealm.class);
+        //});
+//
+        //realm[0].signup(ADMIN_USERNAME);
+        //realm[0].signup(MAINTAINER_USERNAME);
 
-        realm[0].signup(ADMIN_USERNAME);
-        realm[0].signup(MAINTAINER_USERNAME);
-
         security.configure(() -> {
+            MockSecurityRealm realm = security.useRealm(MockSecurityRealm.class);
+            realm.configure(ADMIN_USERNAME, MAINTAINER_USERNAME);
             MatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(MatrixAuthorizationStrategy.class);
             mas.addUser(ADMIN_USERNAME).admin();
-            mas.addUser(MAINTAINER_USERNAME).on(OVERALL_READ, ITEM_READ, VIEW_READ, ITEM_CONFIGURE);
-            mas.getUser(USER_USERNAME).on(OVERALL_READ, ITEM_READ, VIEW_READ);
+            mas.addUser(MAINTAINER_USERNAME).readOnly().on(ITEM_CONFIGURE);
+            mas.getUser(USER_USERNAME).readOnly();
         });
     }
 
@@ -396,6 +395,16 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         setPipelineScript(job, "", false, agent.getName(), false);
 
         return job;
+    }
+
+    private void restartJenkinsAndLogin(final String username) {
+        jenkins.visit("restart");
+        jenkins.clickButton("Yes");
+        jenkins.waitForStarted();
+
+        if (username != null && !username.isEmpty()) {
+            jenkins.login().doLogin(username);
+        }
     }
 
     private void addMailPublisherOnStage(final FreeStyleJob job, final String stage) {
