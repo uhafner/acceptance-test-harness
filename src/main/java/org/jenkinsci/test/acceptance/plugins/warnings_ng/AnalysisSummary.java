@@ -233,7 +233,7 @@ public class AnalysisSummary extends PageObject {
      * @throws org.openqa.selenium.NoSuchElementException
      *         When there is no quality gate reset button.
      */
-    private WebElement getQualityGateResetButton() throws org.openqa.selenium.NoSuchElementException {
+    public WebElement getQualityGateResetButton() throws org.openqa.selenium.NoSuchElementException {
         for (WebElement result : results) {
             if (result.getText().contains("Quality gate")) {
                 return result.findElement(by.id(id + "-resetReference"));
@@ -255,17 +255,6 @@ public class AnalysisSummary extends PageObject {
         } catch (org.openqa.selenium.NoSuchElementException ignored) { }
 
         return false;
-    }
-
-
-    /**
-     * Clicks the link reseting the failed quality gate.
-     *
-     * @throws NoSuchElementException
-     *         When the quality gate did not fail so there is no link to click.
-     */
-    public void resetQualityGate() {
-        getQualityGateResetButton().click();
     }
 
     /**

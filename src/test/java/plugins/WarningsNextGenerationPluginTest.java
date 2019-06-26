@@ -15,6 +15,9 @@ import java.util.regex.Pattern;
 import javax.mail.MessagingException;
 
 import org.junit.Test;
+import org.openqa.selenium.WebElement;
+import org.openqa.selenium.support.ui.ExpectedConditions;
+import org.openqa.selenium.support.ui.WebDriverWait;
 
 import com.google.inject.Inject;
 
@@ -137,8 +140,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     /**
      * Runs a freestyle job within a docker agent. Builds a job with failing quality gate and rebuilds after a restart
-     * without reseting the quality gate. ToDo: needs to check if the reset button is not visible for others (not job
-     * owner)
+     * without reseting the quality gate.
      *
      * @throws ExecutionException
      *         When agent creation fails.
@@ -151,7 +153,6 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         mail.setup(jenkins);
 
         configureSecurity();
-        jenkins.login().doLogin(ADMIN_USER);
 
         Slave agent = createDockerAgentWithoutCredentials();
 
@@ -166,18 +167,9 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         configureWarningMail(job);
 
         Build build = buildFailingJob(job);
-
-        jenkins.logout();
-        jenkins.login().doLogin(NORMAL_USER);
         build.open();
 
-        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).hasQualityGateResetButton()).isFalse();
-
-        jenkins.logout();
-        jenkins.login().doLogin(ADMIN_USER);
-        build.open();
-
-        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).hasQualityGateResetButton()).isTrue();
+        verifyResetButtonVisibility(build);
 
         assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
                 "-> found 1 file",
@@ -186,11 +178,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         reconfigureJobWithResource(job, "quality_gate/3/checkstyle-result.xml");
 
-
-        jenkins.visit("restart");
-        jenkins.clickButton("Yes");
-        jenkins.waitForStarted();
-        jenkins.login().doLogin(ADMIN_USER);
+        resetJenkinsAndLogin(ADMIN_USER);
 
         job.open();
 
@@ -278,7 +266,10 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
      *         When waiting for agent to start was interrupted.
      */
     @Test
+    @WithPlugins({"mock-security-realm", "matrix-auth@2.3"})
     public void should_record_with_qualitygate_reset_FreeStyle() throws ExecutionException, InterruptedException {
+        configureSecurity();
+
         Slave agent = createDockerAgentWithoutCredentials();
         FreeStyleJob job = createFreeStyleJob("quality_gate/1/checkstyle-result.xml");
         job.setLabelExpression(agent.getName());
@@ -290,11 +281,13 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         job.save();
 
         Build build1 = buildJob(job);
-        build1.open();
-        assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).hasQualityGateResetButton()).isTrue();
-        build1.clickButton("Reset quality gate");
         build1.openStatusPage();
-        assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).hasQualityGateResetButton()).isFalse();
+
+        verifyResetButtonVisibility(build1);
+
+        WebElement resetButton = new AnalysisSummary(build1, CHECKSTYLE_ID).getQualityGateResetButton();
+        resetButton.click();
+        new WebDriverWait(driver, 60).until(ExpectedConditions.invisibilityOf(resetButton));
 
         assertThat(new AnalysisSummary(build1, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
                 "-> found 1 file",
@@ -302,7 +295,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
                 "-> Some quality gates have been missed: overall result is WARNING");
 
         reconfigureJobWithResource(job, "quality_gate/3/checkstyle-result.xml");
-        jenkins.restart();
+
+        resetJenkinsAndLogin(ADMIN_USER);
 
         Build build2 = buildJob(job);
         build2.open();
@@ -345,7 +339,11 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
         Build build = buildJob(job);
         build.open();
-        new AnalysisSummary(build, CHECKSTYLE_ID).resetQualityGate();
+
+        WebElement resetButton = new AnalysisSummary(build, CHECKSTYLE_ID).getQualityGateResetButton();
+        resetButton.click();
+        new WebDriverWait(driver, 60).until(ExpectedConditions.invisibilityOf(resetButton));
+
         assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).openInfoView()).hasInfoMessages(
                 "-> found 1 file",
                 "-> found 1 issue (skipped 0 duplicates)",
@@ -1094,6 +1092,42 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         return Paths.get(resource.toURI());
     }
 
+    /**
+     * Verifies qualitiy gate reset button visibility for an admin and an read only user.
+     *
+     * @param build
+     *         Build to be checked
+     */
+    private void verifyResetButtonVisibility(final Build build) {
+        jenkins.logout();
+        jenkins.login().doLogin(NORMAL_USER);
+        build.open();
+
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).hasQualityGateResetButton()).isFalse();
+
+        jenkins.logout();
+        jenkins.login().doLogin(ADMIN_USER);
+        build.open();
+
+        assertThat(new AnalysisSummary(build, CHECKSTYLE_ID).hasQualityGateResetButton()).isTrue();
+    }
+
+    /**
+     * Resets jenkins and logs given user in.
+     *
+     * @param user
+     *         User to be logged in after reset
+     */
+    private void resetJenkinsAndLogin(final String user) {
+        jenkins.visit("restart");
+        jenkins.clickButton("Yes");
+        jenkins.waitForStarted();
+        jenkins.login().doLogin(ADMIN_USER);
+    }
+
+    /**
+     * Set up Globalsecurity for one admin user and one read only (normal) user and logs in admin user.
+     */
     private void configureSecurity() {
         GlobalSecurityConfig security = new GlobalSecurityConfig(jenkins);
         security.configure(() -> {
@@ -1103,6 +1137,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
             mas.addUser(ADMIN_USER).admin();
             mas.addUser(NORMAL_USER).readOnly();
         });
+        jenkins.login().doLogin(ADMIN_USER);
     }
 
     /**
