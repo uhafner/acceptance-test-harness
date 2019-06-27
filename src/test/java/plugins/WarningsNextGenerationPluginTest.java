@@ -9,9 +9,13 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.LinkedHashMap;
 import java.util.Map.Entry;
+import java.util.concurrent.ExecutionException;
 import java.util.function.Consumer;
+import java.util.regex.Pattern;
+import javax.mail.MessagingException;
 
 import org.junit.Test;
+import org.openqa.selenium.WebElement;
 
 import com.google.inject.Inject;
 
@@ -21,8 +25,11 @@ import org.jenkinsci.test.acceptance.junit.AbstractJUnitTest;
 import org.jenkinsci.test.acceptance.junit.WithCredentials;
 import org.jenkinsci.test.acceptance.junit.WithDocker;
 import org.jenkinsci.test.acceptance.junit.WithPlugins;
+import org.jenkinsci.test.acceptance.plugins.email_ext.EmailExtPublisher;
+import org.jenkinsci.test.acceptance.plugins.matrix_auth.MatrixAuthorizationStrategy;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenInstallation;
 import org.jenkinsci.test.acceptance.plugins.maven.MavenModuleSet;
+import org.jenkinsci.test.acceptance.plugins.mock_security_realm.MockSecurityRealm;
 import org.jenkinsci.test.acceptance.plugins.ssh_slaves.SshSlaveLauncher;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AbstractNonDetailsIssuesTableRow;
 import org.jenkinsci.test.acceptance.plugins.warnings_ng.AnalysisResult;
@@ -45,9 +52,14 @@ import org.jenkinsci.test.acceptance.po.Build;
 import org.jenkinsci.test.acceptance.po.Build.Result;
 import org.jenkinsci.test.acceptance.po.DumbSlave;
 import org.jenkinsci.test.acceptance.po.FreeStyleJob;
+import org.jenkinsci.test.acceptance.po.GlobalSecurityConfig;
 import org.jenkinsci.test.acceptance.po.Job;
 import org.jenkinsci.test.acceptance.po.Slave;
 import org.jenkinsci.test.acceptance.po.WorkflowJob;
+import org.jenkinsci.test.acceptance.slave.LocalSlaveController;
+import org.jenkinsci.test.acceptance.slave.SlaveController;
+import org.jenkinsci.test.acceptance.utils.mail.MailService;
+import org.jenkinsci.test.acceptance.utils.mail.Mailtrap;
 
 import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
 
@@ -66,6 +78,8 @@ import static org.jenkinsci.test.acceptance.plugins.warnings_ng.Assertions.*;
  * @author Arne Schöntag
  * @author Alexandra Wenzel
  * @author Nikolai Wohlgemuth
+ * @author Fabian Janker
+ * @author Andreas Pabst
  */
 @WithPlugins("warnings-ng")
 public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
@@ -90,6 +104,8 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     private static final String NO_PACKAGE = "-";
 
+    private static final String EMAIL = "foo@bar.baz";
+
     /**
      * Credentials to access the docker container. The credentials are stored with the specified ID and use the provided
      * SSH key. Use the following annotation on your test case to use the specified docker container as git server or
@@ -106,6 +122,334 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     @Inject
     private DockerContainerHolder<JavaGitContainer> dockerContainer;
+
+    /**
+     * UI-Test using a pipeline with the following steps: Build on agent, verify results, restart, verify results again,
+     * reset the quality gate, second build, verify results and send mail to the developers.
+     *
+     * @throws ExecutionException
+     *         if there is an error creating the agent
+     * @throws InterruptedException
+     *         if there is an error creating the agent
+     * @throws IOException
+     *         if there is an error asserting the mail
+     * @throws MessagingException
+     *         if there is an error asserting the mail
+     */
+    @Test
+    @WithPlugins({"mock-security-realm", "matrix-auth@2.3", "email-ext"})
+    public void reset_quality_gate_pipeline()
+            throws ExecutionException, InterruptedException, IOException, MessagingException {
+        configureSecurity();
+        jenkins.login().doLogin("admin");
+
+        final String agentLabel = "agent";
+        createLocalAgent(agentLabel);
+
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+
+        configurePipelineQualityGateTest(job, "build_01", false);
+        Build build = buildJob(job);
+        checkFirstBuildStatus(build);
+
+        jenkins.restart();
+        // check build status again to see if everything was persisted
+        checkFirstBuildStatus(build);
+
+        resetQualityGate(build);
+
+        MailService mailService = new Mailtrap();
+        mailService.setup(jenkins);
+
+        configurePipelineQualityGateTest(job, "build_02", true);
+        Build build2 = buildJob(job);
+        checkSecondBuildStatusAfterQualityGateReset(build2);
+
+        mailService.assertMail(
+                Pattern.compile(String.format("%s - #%s: %d issues", job.name, build2.getNumber(), 5)),
+                EMAIL,
+                Pattern.compile(String.format("build #%d had %d issues", build2.getNumber(), 5)));
+    }
+
+    /**
+     * UI-Test using a pipeline with the following steps: Build on agent, verify results, restart, verify results again,
+     * second build, verify results and send mail to the developers.
+     *
+     * @throws ExecutionException
+     *         if there is an error creating the agent
+     * @throws InterruptedException
+     *         if there is an error creating the agent
+     * @throws IOException
+     *         if there is an error asserting the mail
+     * @throws MessagingException
+     *         if there is an error asserting the mail
+     */
+    @Test
+    @WithPlugins("email-ext")
+    public void quality_gate_pipeline()
+            throws ExecutionException, InterruptedException, IOException, MessagingException {
+        final String agentLabel = "agent";
+        createLocalAgent(agentLabel);
+
+        WorkflowJob job = jenkins.jobs.create(WorkflowJob.class);
+
+        configurePipelineQualityGateTest(job, "build_01", false);
+        Build build = buildJob(job);
+        checkFirstBuildStatus(build);
+
+        jenkins.restart();
+
+        // check build status again to see if everything was persisted
+        checkFirstBuildStatus(build);
+
+        MailService mailService = new Mailtrap();
+        mailService.setup(jenkins);
+
+        configurePipelineQualityGateTest(job, "build_02", true);
+        Build build2 = buildJob(job);
+        checkSecondBuildStatus(build2);
+
+        mailService.assertMail(
+                Pattern.compile(String.format("%s - #%s: %d issues", job.name, build2.getNumber(), 5)),
+                EMAIL,
+                Pattern.compile(String.format("build #%d had %d issues", build2.getNumber(), 5)));
+    }
+
+    private void configurePipelineQualityGateTest(final WorkflowJob job, final String build, final boolean withMail) {
+        String pmd = job.copyResourceStep(WARNINGS_PLUGIN_PREFIX + "quality_gate_test/" + build + "/testresult.xml");
+
+        final String mail = withMail
+                ? "emailext body: 'build #${BUILD_NUMBER} had ${ANALYSIS_ISSUES_COUNT} issues', "
+                + "recipientProviders: [developers()], to: '" + EMAIL + "', replyTo: '${DEFAULT_REPLYTO}', "
+                + "subject: '${JOB_NAME} - #${BUILD_NUMBER}: ${ANALYSIS_ISSUES_COUNT} issues'\n"
+                : "";
+
+        job.configure(() -> {
+            job.script.set("node('agent') {\n"
+                    + pmd.replace("\\", "\\\\")
+                    + "recordIssues enabledForFailure: true, tools: [ pmdParser(pattern: '**/testresult.xml') ],"
+                    + " qualityGates: [[threshold: 1, type: 'TOTAL', unstable: true]]\n"
+                    + mail
+                    + "}");
+            job.sandbox.check();
+        });
+    }
+
+    /**
+     * UI-Test using a freestyle job with the following steps: Build on agent, verify results, restart, verify results
+     * again, reset the quality gate, second build, verify results and send mail to the developers.
+     *
+     * @throws ExecutionException
+     *         if there is an error creating the agent
+     * @throws InterruptedException
+     *         if there is an error creating the agent
+     * @throws IOException
+     *         if there is an error asserting the mail
+     * @throws MessagingException
+     *         if there is an error asserting the mail
+     */
+    @Test
+    @WithPlugins({"mock-security-realm", "matrix-auth@2.3", "email-ext"})
+    public void reset_quality_gate_freestyle()
+            throws ExecutionException, InterruptedException, IOException, MessagingException {
+        configureSecurity();
+        jenkins.login().doLogin("admin");
+
+        final String agentLabel = "agent";
+        createLocalAgent(agentLabel);
+
+        FreeStyleJob job = createFreeStyleJob("quality_gate_test/build_01");
+        configureFreestyleQualityGateTest(job, "agent");
+        job.save();
+
+        Build build = buildJob(job);
+        checkFirstBuildStatus(build);
+
+        jenkins.restart();
+
+        // check build again to see if everything was persisted
+        checkFirstBuildStatus(build);
+
+        resetQualityGate(build);
+
+        MailService mailService = new Mailtrap();
+        mailService.setup(jenkins);
+        reconfigureJobWithResource(job, "quality_gate_test/build_02");
+        configureFreestyleMail(job);
+
+        Build build2 = buildJob(job);
+        checkSecondBuildStatusAfterQualityGateReset(build2);
+
+        mailService.assertMail(
+                Pattern.compile(String.format("%s - #%s: %d issues", job.name, build2.getNumber(), 5)),
+                EMAIL,
+                Pattern.compile(String.format("build #%d had %d issues", build2.getNumber(), 5)));
+    }
+
+    /**
+     * UI-Test using a freestyle job with the following steps: Build on agent, verify results, restart, verify results
+     * again, second build, verify results and send mail to the developers.
+     *
+     * @throws ExecutionException
+     *         if there is an error creating the agent
+     * @throws InterruptedException
+     *         if there is an error creating the agent
+     * @throws IOException
+     *         if there is an error asserting the mail
+     * @throws MessagingException
+     *         if there is an error asserting the mail
+     */
+    @Test
+    @WithPlugins("email-ext")
+    public void quality_gate_freestyle()
+            throws ExecutionException, InterruptedException, MessagingException, IOException {
+        final String agentLabel = "agent";
+        createLocalAgent(agentLabel);
+
+        FreeStyleJob job = createFreeStyleJob("quality_gate_test/build_01");
+        configureFreestyleQualityGateTest(job, "agent");
+        job.save();
+
+        Build build = buildJob(job);
+        checkFirstBuildStatus(build);
+
+        jenkins.restart();
+        // check build again to see if everything was persisted
+        checkFirstBuildStatus(build);
+
+        MailService mailService = new Mailtrap();
+        mailService.setup(jenkins);
+        reconfigureJobWithResource(job, "quality_gate_test/build_02");
+        configureFreestyleMail(job);
+
+        Build build2 = buildJob(job);
+        checkSecondBuildStatus(build2);
+
+        mailService.assertMail(
+                Pattern.compile(String.format("%s - #%s: %d issues", job.name, build2.getNumber(), 5)),
+                EMAIL,
+                Pattern.compile(String.format("build #%d had %d issues", build2.getNumber(), 5)));
+    }
+
+    private void configureFreestyleQualityGateTest(final FreeStyleJob job, final String agentLabel) {
+        job.addPublisher(IssuesRecorder.class, recorder -> {
+            recorder.setTool("PMD", pmd -> pmd.setPattern("**/testresult.xml"));
+            recorder.setEnabledForFailure(true);
+            recorder.addQualityGateConfiguration(1, QualityGateType.TOTAL, true);
+        });
+        job.setLabelExpression(agentLabel);
+    }
+
+    private void configureFreestyleMail(final FreeStyleJob job) {
+        job.configure(() -> job.addPublisher(EmailExtPublisher.class, emailExtPublisher -> {
+            emailExtPublisher.subject.set("${JOB_NAME} - #${BUILD_NUMBER}: ${ANALYSIS_ISSUES_COUNT} issues");
+            emailExtPublisher.body.set("build #${BUILD_NUMBER} had ${ANALYSIS_ISSUES_COUNT} issues");
+            emailExtPublisher.setRecipient(EMAIL);
+            emailExtPublisher.addTrigger(EmailExtPublisher.TRIGGER_ALWAYS);
+        }));
+    }
+
+    private void checkFirstBuildStatus(final Build build) {
+        build.shouldBeUnstable();
+        build.open();
+
+        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 3 warnings");
+        assertThat(pmd).hasQualityGateResult(QualityGateResult.UNSTABLE);
+        // no reference build -> no new or fixed warnings
+        assertThat(pmd).hasReferenceBuild(0);
+        assertThat(pmd).hasNewSize(0);
+        assertThat(pmd).hasFixedSize(0);
+        assertThat(pmd).hasInfoType(InfoType.ERROR);
+
+        AnalysisResult pmdDetails = pmd.openOverallResult();
+        assertThat(pmdDetails).hasActiveTab(Tab.FILES);
+        assertThat(pmdDetails).hasTotal(3);
+        assertThat(pmdDetails).hasOnlyAvailableTabs(Tab.FILES, Tab.CATEGORIES, Tab.TYPES, Tab.ISSUES);
+    }
+
+    private void checkSecondBuildStatus(final Build build) {
+        build.shouldBeUnstable();
+        build.open();
+
+        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 5 warnings");
+        assertThat(pmd).hasQualityGateResult(QualityGateResult.UNSTABLE);
+        assertThat(pmd).hasReferenceBuild(0);
+        assertThat(pmd).hasNewSize(0);
+        assertThat(pmd).hasFixedSize(0);
+        assertThat(pmd).hasInfoType(InfoType.ERROR);
+
+        AnalysisResult pmdDetails = pmd.openOverallResult();
+        assertThat(pmdDetails).hasActiveTab(Tab.FILES);
+        assertThat(pmdDetails).hasTotal(5);
+        assertThat(pmdDetails).hasOnlyAvailableTabs(Tab.FILES, Tab.CATEGORIES, Tab.TYPES, Tab.ISSUES);
+    }
+
+    private void checkSecondBuildStatusAfterQualityGateReset(final Build build) {
+        build.shouldBeUnstable();
+        build.open();
+
+        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd).isDisplayed();
+        assertThat(pmd).hasTitleText("PMD: 5 warnings");
+        assertThat(pmd).hasQualityGateResult(QualityGateResult.UNSTABLE);
+        // reset quality gate -> use reference build although quality gate failed
+        assertThat(pmd).hasReferenceBuild(1);
+        assertThat(pmd).hasNewSize(2);
+        assertThat(pmd).hasFixedSize(0);
+        assertThat(pmd).hasInfoType(InfoType.ERROR);
+
+        AnalysisResult pmdDetails = pmd.openOverallResult();
+        assertThat(pmdDetails).hasActiveTab(Tab.FILES);
+        assertThat(pmdDetails).hasTotal(5);
+        assertThat(pmdDetails).hasOnlyAvailableTabs(Tab.FILES, Tab.CATEGORIES, Tab.TYPES, Tab.ISSUES);
+    }
+
+    private void resetQualityGate(final Build build) {
+        jenkins.logout();
+        jenkins.login().doLogin("user");
+
+        build.open();
+        AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd.getResetQualityGate()).isNull();
+
+        jenkins.logout();
+        jenkins.login().doLogin("admin");
+
+        build.open();
+        pmd = new AnalysisSummary(build, PMD_ID);
+        WebElement resetQualityGateButton = pmd.getResetQualityGate();
+        assertThat(resetQualityGateButton).isNotNull();
+        resetQualityGateButton.click();
+        pmd = new AnalysisSummary(build, PMD_ID);
+        assertThat(pmd.getResetQualityGate()).isNull();
+    }
+
+    private void createLocalAgent(final String label) throws ExecutionException, InterruptedException {
+        SlaveController controller = new LocalSlaveController();
+        Slave agent = controller.install(jenkins).get();
+        agent.configure();
+        agent.setLabels(label);
+        agent.save();
+        agent.waitUntilOnline();
+
+        assertThat(agent.isOnline()).isTrue();
+    }
+
+    private void configureSecurity() {
+        GlobalSecurityConfig security = new GlobalSecurityConfig(jenkins);
+        security.configure(() -> {
+            MockSecurityRealm realm = security.useRealm(MockSecurityRealm.class);
+            realm.configure("admin", "user");
+            MatrixAuthorizationStrategy mas = security.useAuthorizationStrategy(MatrixAuthorizationStrategy.class);
+            mas.addUser("admin").admin();
+            mas.addUser("user").readOnly();
+            mas.getUser("anonymous").readOnly();
+        });
+    }
 
     /**
      * Runs a pipeline with checkstyle and pmd. Verifies the expansion of tokens with the token-macro plugin.
