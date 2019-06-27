@@ -153,6 +153,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         checkFirstBuildStatus(build);
 
         jenkins.restart();
+        jenkins.login().doLogin("admin");
         // check build status again to see if everything was persisted
         checkFirstBuildStatus(build);
 
@@ -166,7 +167,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         checkSecondBuildStatusAfterQualityGateReset(build2);
 
         mailService.assertMail(
-                Pattern.compile(String.format("%s - #%s: %d issues", job.name, build2.getNumber(), 5)),
+                Pattern.compile(String.format("%s - #%d: %d issues", job.name, build2.getNumber(), 5)),
                 EMAIL,
                 Pattern.compile(String.format("build #%d had %d issues", build2.getNumber(), 5)));
     }
@@ -210,7 +211,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         checkSecondBuildStatus(build2);
 
         mailService.assertMail(
-                Pattern.compile(String.format("%s - #%s: %d issues", job.name, build2.getNumber(), 5)),
+                Pattern.compile(String.format("%s - #%d: %d issues", job.name, build2.getNumber(), 5)),
                 EMAIL,
                 Pattern.compile(String.format("build #%d had %d issues", build2.getNumber(), 5)));
     }
@@ -266,6 +267,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         checkFirstBuildStatus(build);
 
         jenkins.restart();
+        jenkins.login().doLogin("admin");
 
         // check build again to see if everything was persisted
         checkFirstBuildStatus(build);
@@ -281,7 +283,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         checkSecondBuildStatusAfterQualityGateReset(build2);
 
         mailService.assertMail(
-                Pattern.compile(String.format("%s - #%s: %d issues", job.name, build2.getNumber(), 5)),
+                Pattern.compile(String.format("%s - #%d: %d issues", job.name, build2.getNumber(), 5)),
                 EMAIL,
                 Pattern.compile(String.format("build #%d had %d issues", build2.getNumber(), 5)));
     }
@@ -326,7 +328,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         checkSecondBuildStatus(build2);
 
         mailService.assertMail(
-                Pattern.compile(String.format("%s - #%s: %d issues", job.name, build2.getNumber(), 5)),
+                Pattern.compile(String.format("%s - #%d: %d issues", job.name, build2.getNumber(), 5)),
                 EMAIL,
                 Pattern.compile(String.format("build #%d had %d issues", build2.getNumber(), 5)));
     }
@@ -351,7 +353,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     private void checkFirstBuildStatus(final Build build) {
         build.shouldBeUnstable();
-        build.open();
+        build.openStatusPage();
 
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
@@ -371,7 +373,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     private void checkSecondBuildStatus(final Build build) {
         build.shouldBeUnstable();
-        build.open();
+        build.openStatusPage();
 
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
@@ -390,7 +392,7 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
 
     private void checkSecondBuildStatusAfterQualityGateReset(final Build build) {
         build.shouldBeUnstable();
-        build.open();
+        build.openStatusPage();
 
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
         assertThat(pmd).isDisplayed();
@@ -412,20 +414,20 @@ public class WarningsNextGenerationPluginTest extends AbstractJUnitTest {
         jenkins.logout();
         jenkins.login().doLogin("user");
 
-        build.open();
+        build.openStatusPage();
         AnalysisSummary pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd.getResetQualityGate()).isNull();
+        assertThat(pmd.isResetQualityGateVisible()).isFalse();
 
         jenkins.logout();
         jenkins.login().doLogin("admin");
 
-        build.open();
+        build.openStatusPage();
         pmd = new AnalysisSummary(build, PMD_ID);
         WebElement resetQualityGateButton = pmd.getResetQualityGate();
-        assertThat(resetQualityGateButton).isNotNull();
+        assertThat(pmd.isResetQualityGateVisible()).isTrue();
         resetQualityGateButton.click();
         pmd = new AnalysisSummary(build, PMD_ID);
-        assertThat(pmd.getResetQualityGate()).isNull();
+        assertThat(pmd.isResetQualityGateVisible()).isFalse();
     }
 
     private void createLocalAgent(final String label) throws ExecutionException, InterruptedException {

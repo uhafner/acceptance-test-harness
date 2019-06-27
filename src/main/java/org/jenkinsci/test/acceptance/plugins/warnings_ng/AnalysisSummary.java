@@ -234,19 +234,16 @@ public class AnalysisSummary extends PageObject {
      *         there is no such link
      */
     public WebElement getResetQualityGate() {
-        for (WebElement result : results) {
-            if (result.getText().contains("Quality gate")) {
-                List<WebElement> links = result.findElements(by.tagName("a"));
-                if (!links.isEmpty()) {
-                    for (WebElement link : links) {
-                        if (link.getAttribute("href").endsWith("resetReference")) {
-                            return link;
-                        }
-                    }
-                }
-            }
-        }
-        return null;
+        return getElement(By.id(id + "-resetReference"));
+    }
+
+    /**
+     * Determine, if there is a button for resetting the quality gate.
+     *
+     * @return true, if the element is visible, false otherwise
+     */
+    public boolean isResetQualityGateVisible() {
+        return getResetQualityGate() != null;
     }
 
     /**
